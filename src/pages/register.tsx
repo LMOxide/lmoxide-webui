@@ -12,10 +12,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/lib/auth-context"
+import { useConfig } from "@/lib/queries"
 import { PASSWORD_MAX, PASSWORD_MIN, USERNAME_HINT, USERNAME_PATTERN } from "@/lib/rules"
 
 export function RegisterPage() {
   const { session, login } = useAuth()
+  const config = useConfig()
   const navigate = useNavigate()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
@@ -31,7 +33,9 @@ export function RegisterPage() {
       navigate("/me")
     },
   })
-  const closed = m.error instanceof ApiError && m.error.code === "registration_closed"
+  const closed =
+    config.data?.registration_open === false ||
+    (m.error instanceof ApiError && m.error.code === "registration_closed")
 
   if (session)
     return (
@@ -62,12 +66,16 @@ export function RegisterPage() {
           }}
         >
           <CardContent className="space-y-4">
-            {m.error && (
+            {closed ? (
               <Alert variant="destructive">
-                <AlertDescription>
-                  {closed ? "Registration is closed on this server." : errorMessage(m.error)}
-                </AlertDescription>
+                <AlertDescription>Registration is closed on this server.</AlertDescription>
               </Alert>
+            ) : (
+              m.error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{errorMessage(m.error)}</AlertDescription>
+                </Alert>
+              )
             )}
             <div className="space-y-2">
               <Label htmlFor="username">Username</Label>

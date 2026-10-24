@@ -154,10 +154,19 @@ export function AccountsPage() {
 
   const accounts = useQuery({
     queryKey: ["accounts", search, offset],
-    queryFn: () =>
-      unwrap(api.GET("/v1/accounts", { params: { query: { search: search || null, offset, limit: PAGE } } })),
+    queryFn: async () => {
+      const r = api.GET("/v1/accounts", { params: { query: { search: search || null, offset, limit: PAGE } } })
+      const items = await unwrap(r)
+      // matches in all, from X-Total-Count
+      const header = (await r).response.headers.get("X-Total-Count")
+      return { items, total: header == null ? null : Number(header) }
+    },
     placeholderData: keepPreviousData,
   })
+  const items = accounts.data?.items
+  const total = accounts.data?.total ?? null
+  const hasNext = items != null && (total != null ? offset + items.length < total : items.length === PAGE)
+  const pages = total != null ? Math.max(1, Math.ceil(total / PAGE)) : null
   const page = (o: number) =>
     setParams((p) => {
       if (o) p.set("offset", String(o))
@@ -183,13 +192,13 @@ export function AccountsPage() {
       ) : (
         <Card>
           <CardContent>
-            {!accounts.data ? (
+            {!items ? (
               <div className="space-y-2">
                 {Array.from({ length: 5 }, (_, i) => (
                   <Skeleton key={i} className="h-8" />
                 ))}
               </div>
-            ) : accounts.data.length === 0 ? (
+            ) : items.length === 0 ? (
               <Empty>{search ? `No usernames contain "${search}".` : "No accounts."}</Empty>
             ) : (
               <Table>
@@ -202,7 +211,7 @@ export function AccountsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {accounts.data.map((a) => (
+                  {items.map((a) => (
                     <TableRow key={a.id}>
                       <TableCell>
                         <span className="flex flex-wrap items-center gap-2">
@@ -226,15 +235,17 @@ export function AccountsPage() {
           </CardContent>
         </Card>
       )}
-      {accounts.data && (offset > 0 || accounts.data.length === PAGE) && (
+      {items && (offset > 0 || hasNext) && (
         <div className="mt-4 flex items-center justify-end gap-2 text-sm text-muted-foreground">
           <span>
-            {offset + 1}–{offset + accounts.data.length}
+            {items.length > 0 && `${offset + 1}–${offset + items.length}`}
+            {total != null && ` of ${total}`}
+            {pages != null && pages > 1 && ` · page ${Math.floor(offset / PAGE) + 1} of ${pages}`}
           </span>
           <Button variant="outline" size="icon-sm" disabled={offset === 0} onClick={() => page(Math.max(0, offset - PAGE))} aria-label="Previous page">
             <ChevronLeftIcon />
           </Button>
-          <Button variant="outline" size="icon-sm" disabled={accounts.data.length < PAGE} onClick={() => page(offset + PAGE)} aria-label="Next page">
+          <Button variant="outline" size="icon-sm" disabled={!hasNext} onClick={() => page(offset + PAGE)} aria-label="Next page">
             <ChevronRightIcon />
           </Button>
         </div>

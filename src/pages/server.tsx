@@ -14,8 +14,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/lib/auth-context"
 import { useStatus } from "@/lib/queries"
-
-const BROADCAST_MAX = 500
+import { BROADCAST_MAX, BROADCAST_MIN } from "@/lib/rules"
 
 function Broadcast() {
   const [message, setMessage] = useState("")
@@ -47,6 +46,7 @@ function Broadcast() {
           <Textarea
             rows={3}
             required
+            minLength={BROADCAST_MIN}
             maxLength={BROADCAST_MAX}
             placeholder="The server restarts in 10 minutes."
             value={message}

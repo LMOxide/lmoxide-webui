@@ -6,7 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { formatTime } from "@/lib/format"
-import { usePlayfields } from "@/lib/queries"
+import { useGmLevels, usePlayfields } from "@/lib/queries"
 
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
   return (
@@ -30,20 +30,26 @@ export function ErrorAlert({ error, title = "Something went wrong" }: { error: u
   )
 }
 
-/** Moderator/admin badge for an account's GM level; nothing for players. */
+/** Moderator/admin badge for an account's GM level (thresholds from `/v1/config`); nothing for players. */
 export function GmBadge({ level }: { level: number }) {
+  const gm = useGmLevels()
   if (level <= 0) return null
-  return level >= 2 ? (
-    <Badge>
-      <ShieldCheckIcon data-icon="inline-start" />
-      Admin{level > 2 ? ` (GM ${level})` : ""}
-    </Badge>
-  ) : (
-    <Badge variant="secondary">
-      <ShieldIcon data-icon="inline-start" />
-      Moderator
-    </Badge>
-  )
+  if (level >= gm.admin)
+    return (
+      <Badge>
+        <ShieldCheckIcon data-icon="inline-start" />
+        Admin{level > gm.admin ? ` (GM ${level})` : ""}
+      </Badge>
+    )
+  if (level >= gm.moderator)
+    return (
+      <Badge variant="secondary">
+        <ShieldIcon data-icon="inline-start" />
+        Moderator{level > gm.moderator ? ` (GM ${level})` : ""}
+      </Badge>
+    )
+  // staff in the game, but no scope in the API
+  return <Badge variant="outline">GM {level}</Badge>
 }
 
 export function BanBadge({ ban }: { ban: Schemas["BanInfo"] | null | undefined }) {

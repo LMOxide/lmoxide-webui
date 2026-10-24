@@ -10,9 +10,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/lib/auth-context"
+import { useConfig } from "@/lib/queries"
 
 export function LoginPage() {
   const { session, login } = useAuth()
+  const config = useConfig()
   const navigate = useNavigate()
   const from = (useLocation().state as { from?: string } | null)?.from
   const [username, setUsername] = useState("")
@@ -69,12 +71,14 @@ export function LoginPage() {
             <Button type="submit" className="w-full" disabled={m.isPending}>
               {m.isPending ? "Logging in…" : "Log in"}
             </Button>
-            <p className="text-sm text-muted-foreground">
-              No account?{" "}
-              <Link to="/register" className="text-foreground underline underline-offset-4">
-                Create one
-              </Link>
-            </p>
+            {config.data?.registration_open && (
+              <p className="text-sm text-muted-foreground">
+                No account?{" "}
+                <Link to="/register" className="text-foreground underline underline-offset-4">
+                  Create one
+                </Link>
+              </p>
+            )}
           </CardFooter>
         </form>
       </Card>

@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "gen:api": "openapi-typescript ../lmoxide/docs/openapi.json -o src/api/schema.d.ts",
+    "gen:api": "openapi-typescript ../lmoxide/docs/openapi.json -o src/api/schema.d.ts && node scripts/gen-rules.mjs ../lmoxide/docs/openapi.json src/api/rules.gen.ts",
     "typecheck": "tsc -b"
   },
   "dependencies": {

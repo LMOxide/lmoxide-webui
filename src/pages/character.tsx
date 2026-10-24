@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { numberFormat } from "@/lib/format"
+import { useMinifigures, useTokens } from "@/lib/queries"
 
 /** Bit numbers set in an upgrade mask. */
 function bits(mask: number) {
@@ -23,9 +24,26 @@ export function CharacterPage() {
     queryKey: ["character", id],
     queryFn: () => unwrap(api.GET("/v1/characters/{id}", { params: { path: { id } } })),
   })
+  const figs = useMinifigures().data
+  const tokenInfo = useTokens().data
   const c = q.data
-  const tokens = c ? Object.entries(c.tokens).map(([k, v]) => ({ id: Number(k), ...v })).sort((a, b) => a.id - b.id) : []
-  const upgrades = c ? Object.entries(c.upgrades).map(([k, v]) => ({ template: Number(k), mask: v })) : []
+  const tokens = c
+    ? Object.entries(c.tokens)
+        .map(([k, v]) => ({ id: Number(k), info: tokenInfo?.get(Number(k)), ...v }))
+        .sort((a, b) => a.id - b.id)
+    : []
+  // minifigures with upgrades or a rank that aren't in the team
+  const others = c
+    ? [...new Set([...Object.keys(c.upgrades), ...Object.keys(c.minifigure_ranks)].map(Number))]
+        .filter((t) => !c.team.includes(t))
+        .sort((a, b) => a - b)
+    : []
+  const figName = (t: number) => figs?.get(t)?.name ?? `Minifigure ${t}`
+  /** Names of the upgrades set in a minifigure's mask, by bit. */
+  const upgradeNames = (t: number) => {
+    const upgrades = figs?.get(t)?.upgrades
+    return bits(c?.upgrades[t] ?? 0).map((b) => upgrades?.find((u) => u.bit === b)?.name ?? `bit ${b}`)
+  }
 
   return (
     <>
@@ -59,13 +77,15 @@ export function CharacterPage() {
                   <span className="font-mono">{c.position.map((n) => n.toFixed(1)).join(", ")}</span>
                 </Field>
                 <Field label="Stars">{numberFormat.format(c.stars)}</Field>
+                <Field label="Level">{c.level || <span className="text-muted-foreground">Not set</span>}</Field>
+                <Field label="XP">{numberFormat.format(c.xp)}</Field>
               </Fields>
             </CardContent>
           </Card>
           <Card>
             <CardHeader>
               <CardTitle>Team</CardTitle>
-              <CardDescription>Minifigure templates, the active one first.</CardDescription>
+              <CardDescription>Minifigures, the active one first.</CardDescription>
             </CardHeader>
             <CardContent>
               {c.team.length === 0 ? (
@@ -75,6 +95,7 @@ export function CharacterPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Minifigure</TableHead>
+                      <TableHead className="text-right">Rank</TableHead>
                       <TableHead>Upgrades</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -82,25 +103,27 @@ export function CharacterPage() {
                     {c.team.map((t, i) => (
                       <TableRow key={`${t}-${i}`}>
                         <TableCell>
-                          <span className="flex items-center gap-2 font-mono">
-                            {t}
+                          <span className="flex items-center gap-2" title={`Template ${t}`}>
+                            {figName(t)}
                             {i === 0 && <Badge variant="secondary">Active</Badge>}
                           </span>
                         </TableCell>
-                        <TableCell className="font-mono text-muted-foreground">
-                          {c.upgrades[t] ? bits(c.upgrades[t]).join(", ") : "—"}
-                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{c.minifigure_ranks[t] ?? "—"}</TableCell>
+                        <TableCell className="text-muted-foreground">{upgradeNames(t).join(", ") || "—"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               )}
-              {upgrades.some((u) => !c.team.includes(u.template)) && (
+              {others.length > 0 && (
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Also upgrades for templates not in the team:{" "}
-                  {upgrades
-                    .filter((u) => !c.team.includes(u.template))
-                    .map((u) => `${u.template} (${bits(u.mask).join(", ")})`)
+                  Also minifigures not in the team:{" "}
+                  {others
+                    .map((t) => {
+                      const rank = c.minifigure_ranks[t]
+                      const details = [rank != null && `rank ${rank}`, ...upgradeNames(t)].filter(Boolean)
+                      return details.length ? `${figName(t)} (${details.join(", ")})` : figName(t)
+                    })
                     .join("; ")}
                 </p>
               )}
@@ -119,6 +142,7 @@ export function CharacterPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Token</TableHead>
+                      <TableHead>Minifigure</TableHead>
                       <TableHead className="text-right">Gained</TableHead>
                       <TableHead className="text-right">Spent</TableHead>
                       <TableHead className="text-right">Held</TableHead>
@@ -127,7 +151,12 @@ export function CharacterPage() {
                   <TableBody>
                     {tokens.map((t) => (
                       <TableRow key={t.id}>
-                        <TableCell className="font-mono">{t.id}</TableCell>
+                        <TableCell title={`Token ${t.id}`}>
+                          {t.info?.name ?? <span className="font-mono">{t.id}</span>}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {t.info ? `${figName(t.info.minifigure)} · ${t.info.location}` : "—"}
+                        </TableCell>
                         <TableCell className="text-right tabular-nums">{numberFormat.format(t.gained)}</TableCell>
                         <TableCell className="text-right tabular-nums">{numberFormat.format(t.spent)}</TableCell>
                         <TableCell className="text-right font-medium tabular-nums">

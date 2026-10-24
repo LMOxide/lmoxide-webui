@@ -31,7 +31,7 @@ password `<name>-password`.
 
 | Script | |
 |---|---|
-| `pnpm gen:api` | regenerate `src/api/schema.d.ts` from `../lmoxide/docs/openapi.json` after an API change |
+| `pnpm gen:api` | regenerate `src/api/schema.d.ts` and `src/api/rules.gen.ts` (field limits) from `../lmoxide/docs/openapi.json` after an API change |
 | `pnpm typecheck` / `pnpm lint` | `tsc -b` / oxlint |
 | `pnpm build` | static files in `dist/` |
 
@@ -42,7 +42,7 @@ password `<name>-password`.
   scope checks; a 401 `unauthorized` anywhere logs out
 - `src/pages/`: one file per route; `src/components/`: shared pieces (moderation dialogs,
   tables); `src/components/ui/`: shadcn components
-- `src/lib/rules.ts`: username/password rules mirrored from the server for form hints
+- `src/lib/rules.ts`: username/password/broadcast limits for form hints, generated from the schema (`src/api/rules.gen.ts`)
 
 ## Deploying
 

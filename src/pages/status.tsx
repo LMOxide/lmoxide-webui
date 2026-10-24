@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
 import { formatSince, formatTime } from "@/lib/format"
-import { useStatus } from "@/lib/queries"
+import { useConfig, useStatus } from "@/lib/queries"
 
 function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
   return (
@@ -29,6 +29,7 @@ function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: 
 export function StatusPage() {
   const { session } = useAuth()
   const status = useStatus()
+  const config = useConfig()
   const online = useQuery({
     queryKey: ["online"],
     queryFn: () => unwrap(api.GET("/v1/online")),
@@ -44,7 +45,8 @@ export function StatusPage() {
         title="Server status"
         description="LEGO Minifigures Online, served by LMOxide."
         actions={
-          !session && (
+          !session &&
+          config.data?.registration_open && (
             <Button asChild variant="outline">
               <Link to="/register">Create an account</Link>
             </Button>

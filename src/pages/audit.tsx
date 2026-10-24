@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query"
 import { RefreshCwIcon } from "lucide-react"
+import { Link } from "react-router"
 
 import { api, unwrap } from "@/api/client"
 import { Empty, ErrorAlert, PageHeader } from "@/components/common"
@@ -66,7 +67,20 @@ export function AuditPage() {
                           {e.action}
                         </Badge>
                       </TableCell>
-                      <TableCell>{e.target ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell>
+                        {e.target_account_id != null ? (
+                          // the account may since have been deleted; its page then says so
+                          <Link
+                            to={`/accounts/${e.target_account_id}`}
+                            className="underline-offset-4 hover:underline"
+                            title={`Account ${e.target_account_id}`}
+                          >
+                            {e.target ?? `#${e.target_account_id}`}
+                          </Link>
+                        ) : (
+                          (e.target ?? <span className="text-muted-foreground">—</span>)
+                        )}
+                      </TableCell>
                       <TableCell className="max-w-80 truncate text-muted-foreground" title={e.details ?? undefined}>
                         {e.details ?? "—"}
                       </TableCell>

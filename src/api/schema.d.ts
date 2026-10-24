@@ -11,7 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List accounts. Scope: read. */
+        /** List accounts, by username. Scope: read. */
         get: operations["list_accounts"];
         put?: never;
         /** Create an account. Scope: admin. */
@@ -229,6 +229,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How this API is set up: registration, GM level thresholds. */
+        get: operations["config"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/maintenance": {
         parameters: {
             query?: never;
@@ -274,6 +291,23 @@ export interface paths {
         put?: never;
         /** Change the logged-in account's password (ends its sessions). */
         post: operations["change_own_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/minifigures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every minifigure: name, attacks, upgrade names by bit, parts. */
+        get: operations["minifigures"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -371,6 +405,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Token ids (minifigure parts, as in `Character.tokens`) with their names. */
+        get: operations["tokens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -423,7 +474,13 @@ export interface components {
             details?: string | null;
             /** Format: int64 */
             id: number;
+            /** @description What the action was about; for accounts, the username at the time. */
             target?: string | null;
+            /**
+             * Format: int32
+             * @description For actions on an account: its id (the account may since have been deleted).
+             */
+            target_account_id?: number | null;
         };
         BanInfo: {
             reason?: string | null;
@@ -450,8 +507,29 @@ export interface components {
             new_password: string;
         };
         Character: {
+            /** @description Earned achievements. */
+            achievements: components["schemas"]["EarnedAchievement"][];
+            /**
+             * @description Achievement counters: stat -> minifigure template (0 = the player) -> value (stat 3000116
+             *     enemies defeated, 3000126 smashables smashed, 3000112/3000113 per-minifigure counters).
+             */
+            counters: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
             /** Format: int32 */
             id: number;
+            /**
+             * Format: int32
+             * @description Player level; 0 = never set (a game server without `--progression` plays every
+             *     character at level 30).
+             */
+            level: number;
+            /** @description Minifigure ranks (0..8) by item template, where set (`--progression`). */
+            minifigure_ranks: {
+                [key: string]: number;
+            };
             name: string;
             /** Format: int32 */
             playfield: number;
@@ -468,6 +546,11 @@ export interface components {
             upgrades: {
                 [key: string]: number;
             };
+            /**
+             * Format: int64
+             * @description Player XP.
+             */
+            xp: number;
         };
         CharacterSummary: {
             /** Format: int32 */
@@ -499,6 +582,25 @@ export interface components {
              */
             affected: number;
         };
+        EarnedAchievement: {
+            /**
+             * Format: int64
+             * @description Unix time it was earned.
+             */
+            achieved_at: number;
+            /**
+             * Format: int32
+             * @description Lore tree tag id.
+             */
+            id: number;
+            /** @description Its name in the client data, e.g. "Global_Smash 1000 Monsters" (empty if unknown). */
+            name: string;
+            /**
+             * Format: int32
+             * @description Achievement points.
+             */
+            points: number;
+        };
         ErrorBody: {
             error: components["schemas"]["ErrorDetail"];
         };
@@ -514,6 +616,43 @@ export interface components {
         MaintenanceRequest: {
             enabled: boolean;
             message?: string | null;
+        };
+        Minifigure: {
+            /**
+             * Format: int32
+             * @description Item template id (as in `Character.team` and `Character.upgrades`).
+             */
+            id: number;
+            name: string;
+            /** @description Name of the normal (left-click) attack. */
+            normal_attack?: string | null;
+            /** @description The minifigure's parts (tokens in `Character.tokens`). */
+            parts: components["schemas"]["MinifigurePart"][];
+            /**
+             * Format: int32
+             * @description Collectible series.
+             */
+            series: number;
+            /** @description Name of the special (right-click) attack. */
+            special_attack?: string | null;
+            /** @description Upgrades by bit of `Character.upgrades`. */
+            upgrades: components["schemas"]["MinifigureUpgrade"][];
+        };
+        MinifigurePart: {
+            /** @description Head, Torso or Legs. */
+            location: string;
+            name: string;
+            /**
+             * Format: int32
+             * @description Token id.
+             */
+            token: number;
+        };
+        MinifigureUpgrade: {
+            /** Format: int32 */
+            bit: number;
+            /** @description e.g. "Fast", "Lionhearted". */
+            name: string;
         };
         NewAccount: {
             /** Format: int32 */
@@ -557,6 +696,23 @@ export interface components {
              */
             playfield?: number | null;
         };
+        /** @description How this API is set up, for clients that adapt to it (always public). */
+        ServerConfig: {
+            /**
+             * Format: int32
+             * @description GM level from which an account's login session has the admin scope.
+             */
+            admin_gm_level: number;
+            /**
+             * Format: int32
+             * @description GM level from which an account's login session has the moderate scope.
+             */
+            moderator_gm_level: number;
+            /** @description Whether `/v1/status` and `/v1/online` need a read-scope credential (`--private-status`). */
+            private_status: boolean;
+            /** @description Whether `POST /v1/auth/register` accepts new accounts (`--open-registration`). */
+            registration_open: boolean;
+        };
         Session: {
             account: components["schemas"]["Account"];
             /**
@@ -585,6 +741,18 @@ export interface components {
              */
             started_at?: number | null;
             version?: string | null;
+        };
+        Token: {
+            /** Format: int32 */
+            id: number;
+            /** @description Head, Torso or Legs. */
+            location: string;
+            /**
+             * Format: int32
+             * @description The minifigure this is a part of.
+             */
+            minifigure: number;
+            name: string;
         };
         TokenCount: {
             /** Format: int64 */
@@ -618,6 +786,8 @@ export interface operations {
         responses: {
             200: {
                 headers: {
+                    /** @description How many accounts match the search in all */
+                    "X-Total-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1047,6 +1217,25 @@ export interface operations {
             };
         };
     };
+    config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerConfig"];
+                };
+            };
+        };
+    };
     maintenance: {
         parameters: {
             query?: never;
@@ -1122,6 +1311,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    minifigures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Minifigure"][];
                 };
             };
         };
@@ -1239,6 +1447,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Status"];
+                };
+            };
+        };
+    };
+    tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Token"][];
                 };
             };
         };
