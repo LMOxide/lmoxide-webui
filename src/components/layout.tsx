@@ -152,9 +152,7 @@ export function Layout() {
             </SheetContent>
           </Sheet>
           <Link to="/" className="flex items-center gap-2 font-heading font-semibold">
-            <span className="grid size-7 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-              LMO
-            </span>
+            <img src="/logo-128.png" alt="" className="size-8" />
             <span className="hidden sm:inline">LMOxide</span>
           </Link>
           <div className="hidden md:block">
