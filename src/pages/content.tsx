@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CheckIcon, RefreshCwIcon, XIcon } from "lucide-react"
+import { CheckIcon, EyeIcon, RedoIcon, RefreshCwIcon, UndoIcon, XIcon } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -78,6 +78,27 @@ interface SummaryRow {
   updated: number
 }
 
+/** An approval in this server's history (`/v1/content/history`): it can be undone and redone. */
+interface HistoryEntry {
+  seq: number
+  at: number
+  by: string
+  playfield: number
+  playfield_name: string | null
+  feature: string
+  feature_path: string
+  author: string
+  summary: string
+  status: "applied" | "undone" | "preview" | "preview_ended"
+  preview_until?: number
+  last_action?: [string, number]
+  actions: ("undo" | "redo" | "keep" | "revert")[]
+  edits: { kind: Item["kind"]; id: string; name: string; op: Item["op"]; details?: string[] }[]
+}
+
+/** How long a preview lasts, minutes. */
+const PREVIEW_MINUTES = 15
+
 const OP_VARIANT = { added: "default", changed: "secondary", removed: "destructive" } as const
 
 function useContentState() {
@@ -92,6 +113,20 @@ function Queue() {
       raw<{ records: number }>("POST", `/v1/content/${verb}`, { playfield: change.playfield, feature: change.feature, author: change.author, ids }),
     onSuccess: (r, v) => {
       toast.success(`${v.verb === "approve" ? "Approved" : "Rejected"} ${r.records} record${r.records === 1 ? "" : "s"}`)
+      queryClient.invalidateQueries({ queryKey: ["content"] })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const preview = useMutation({
+    mutationFn: (change: Change) =>
+      raw<{ records: number; seq: number }>("POST", "/v1/content/preview", {
+        playfield: change.playfield,
+        feature: change.feature,
+        author: change.author,
+        minutes: PREVIEW_MINUTES,
+      }),
+    onSuccess: (r) => {
+      toast.success(`Previewing ${r.records} record${r.records === 1 ? "" : "s"} for ${PREVIEW_MINUTES} minutes: keep or revert it under History`)
       queryClient.invalidateQueries({ queryKey: ["content"] })
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -124,6 +159,16 @@ function Queue() {
               <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ verb: "reject", change: c })}>
                 <XIcon data-icon="inline-start" />
                 Reject all
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={preview.isPending}
+                onClick={() => preview.mutate(c)}
+                title={`Put it in the game for everyone for ${PREVIEW_MINUTES} minutes; then it comes back here unless you keep it`}
+              >
+                <EyeIcon data-icon="inline-start" />
+                Preview
               </Button>
             </div>
           </CardHeader>
@@ -165,6 +210,91 @@ function Queue() {
         </Card>
       ))}
     </div>
+  )
+}
+
+const STATUS: Record<HistoryEntry["status"], { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
+  applied: { label: "approved", variant: "default" },
+  undone: { label: "undone", variant: "secondary" },
+  preview: { label: "preview", variant: "outline" },
+  preview_ended: { label: "preview ended", variant: "secondary" },
+}
+
+const ACTION = {
+  undo: { label: "Undo", icon: UndoIcon, done: "Undone" },
+  redo: { label: "Redo", icon: RedoIcon, done: "Applied again" },
+  keep: { label: "Keep", icon: CheckIcon, done: "Kept (approved)" },
+  revert: { label: "Revert", icon: XIcon, done: "Reverted: back in the queue" },
+} as const
+
+function History() {
+  const queryClient = useQueryClient()
+  const q = useQuery({ queryKey: ["content", "history"], queryFn: () => raw<HistoryEntry[]>("GET", "/v1/content/history"), refetchInterval: 15_000 })
+  const act = useMutation({
+    mutationFn: ({ seq, action }: { seq: number; action: HistoryEntry["actions"][number] }) => raw<HistoryEntry>("POST", `/v1/content/history/${seq}/${action}`),
+    onSuccess: (_, v) => {
+      toast.success(ACTION[v.action].done)
+      queryClient.invalidateQueries({ queryKey: ["content"] })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  if (q.error) return <ErrorAlert error={q.error} />
+  if (!q.data) return <Skeleton className="h-24 w-full" />
+  if (!q.data.length) return <Empty>No approvals yet. Approved and previewed changes show up here, to undo or redo.</Empty>
+  return (
+    <Card>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>#</TableHead>
+              <TableHead>World / feature</TableHead>
+              <TableHead>Change</TableHead>
+              <TableHead>State</TableHead>
+              <TableHead>Approved</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {q.data.map((e) => (
+              <TableRow key={e.seq}>
+                <TableCell className="text-muted-foreground">{e.seq}</TableCell>
+                <TableCell>
+                  <span className="font-medium">{e.playfield_name ?? `Playfield ${e.playfield}`}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{e.feature_path}</span>
+                </TableCell>
+                <TableCell className="text-sm" title={e.edits.map((x) => `${x.op} ${x.name}${x.details?.length ? ` (${x.details.join(", ")})` : ""}`).join("\n")}>
+                  by {e.author || "unknown"} · {e.summary}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={STATUS[e.status].variant}>{STATUS[e.status].label}</Badge>
+                  {e.status === "preview" && e.preview_until && <span className="ml-2 text-xs text-muted-foreground">ends {formatRelative(e.preview_until)}</span>}
+                  {e.last_action && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {e.last_action[0]} {formatRelative(e.last_action[1])}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {e.by} {formatRelative(e.at)}
+                </TableCell>
+                <TableCell className="text-right whitespace-nowrap">
+                  {e.actions.map((a) => {
+                    const A = ACTION[a]
+                    return (
+                      <Button key={a} size="sm" variant={a === "keep" ? "default" : "outline"} className="ml-2" disabled={act.isPending} onClick={() => act.mutate({ seq: e.seq, action: a })}>
+                        <A.icon data-icon="inline-start" />
+                        {A.label}
+                      </Button>
+                    )
+                  })}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -339,6 +469,14 @@ export function ContentPage() {
       <section className="grid gap-3">
         <h2 className="font-heading text-lg font-semibold">Waiting for approval</h2>
         <Queue />
+      </section>
+      <section className="grid gap-3">
+        <h2 className="font-heading text-lg font-semibold">History</h2>
+        <p className="text-sm text-muted-foreground">
+          Every approval, newest first. Undo takes a change out of the game (later changes to the same things stay); redo puts it back. Previews are in the game for everyone
+          until you keep or revert them, or their time ends (then they wait above again).
+        </p>
+        <History />
       </section>
       {/* (keyed: saved rules start a fresh draft) */}
       {state.data && <RulesCard key={JSON.stringify(state.data.rules)} rules={state.data.rules} />}
