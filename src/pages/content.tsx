@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CheckIcon, EyeIcon, RedoIcon, RefreshCwIcon, UndoIcon, XIcon } from "lucide-react"
-import { useState } from "react"
+import { CheckIcon, EyeIcon, FilterXIcon, RedoIcon, RefreshCwIcon, UndoIcon, XIcon } from "lucide-react"
+import { useMemo, useState } from "react"
+import { useSearchParams } from "react-router"
 import { toast } from "sonner"
 
-import { errorMessage, raw } from "@/api/client"
+import { api, errorMessage, raw, unwrap } from "@/api/client"
 import { Empty, ErrorAlert, PageHeader } from "@/components/common"
+import { SuggestInput, TokenInput, type Suggestion } from "@/components/suggest-input"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,6 +18,7 @@ import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatRelative } from "@/lib/format"
+import { usePlayfields } from "@/lib/queries"
 
 // lmoxide docs/WORLD-CONTENT.md: what world editors changed on the survey server waits here
 // for approval; the rules say what this server runs and approves without asking.
@@ -33,6 +36,9 @@ interface ContentState {
   revision: number
   pending: number
   pending_records: number
+  /** everyone who made a record, and every tag, in either set (newer servers) */
+  authors?: string[]
+  tags?: string[]
 }
 
 interface Item {
@@ -42,6 +48,8 @@ interface Item {
   op: "added" | "changed" | "removed"
   details?: string[]
   updated: number
+  /** the record's labels: approximate, todo, review, ... */
+  tags?: string[]
 }
 
 interface Change {
@@ -75,6 +83,8 @@ interface SummaryRow {
   notes: number
   scripts: number
   authors: string[]
+  /** tag → records carrying it */
+  tags?: Record<string, number>
   updated: number
 }
 
@@ -93,7 +103,7 @@ interface HistoryEntry {
   preview_until?: number
   last_action?: [string, number]
   actions: ("undo" | "redo" | "keep" | "revert")[]
-  edits: { kind: Item["kind"]; id: string; name: string; op: Item["op"]; details?: string[] }[]
+  edits: { kind: Item["kind"]; id: string; name: string; op: Item["op"]; details?: string[]; tags?: string[] }[]
 }
 
 /** How long a preview lasts, minutes. */
@@ -101,13 +111,214 @@ const PREVIEW_MINUTES = 15
 
 const OP_VARIANT = { added: "default", changed: "secondary", removed: "destructive" } as const
 
+// ------------------------------------------------------------------ filters
+
+/** What the queue, history and summary show (kept in the page's URL, so it can be shared). */
+interface Filter {
+  /** words anywhere: names, details, ids, tags, authors, worlds, features */
+  q: string
+  /** a playfield id, or part of a world's name */
+  world: string
+  /** a feature id (nested ones included), or part of its path */
+  feature: string
+  /** part of an author's name */
+  author: string
+  /** records with any of these tags ("-": untagged) */
+  tags: string[]
+  op: "" | Item["op"]
+  kind: "" | Item["kind"]
+}
+
+const KINDS: Item["kind"][] = ["placement", "trigger", "note", "script"]
+const OPS: Item["op"][] = ["added", "changed", "removed"]
+
+function useFilter(): [Filter, (f: Partial<Filter>) => void, () => void] {
+  const [params, setParams] = useSearchParams()
+  const filter: Filter = {
+    q: params.get("q") ?? "",
+    world: params.get("world") ?? "",
+    feature: params.get("feature") ?? "",
+    author: params.get("author") ?? "",
+    tags: params.getAll("tag"),
+    op: (OPS as string[]).includes(params.get("op") ?? "") ? (params.get("op") as Item["op"]) : "",
+    kind: (KINDS as string[]).includes(params.get("kind") ?? "") ? (params.get("kind") as Item["kind"]) : "",
+  }
+  const set = (f: Partial<Filter>) => {
+    const next = { ...filter, ...f }
+    const p = new URLSearchParams()
+    for (const k of ["q", "world", "feature", "author", "op", "kind"] as const) if (next[k]) p.set(k, next[k])
+    for (const t of next.tags) p.append("tag", t)
+    setParams(p, { replace: true })
+  }
+  return [filter, set, () => setParams(new URLSearchParams(), { replace: true })]
+}
+
+const lower = (s: string | null | undefined) => (s ?? "").toLowerCase()
+const words = (q: string) => lower(q).split(/\s+/).filter(Boolean)
+/** Whether every word is somewhere in `hay`. */
+const hasWords = (ws: string[], hay: string) => ws.every((w) => hay.includes(w))
+
+/** The group-level filters: world, feature, author. */
+function keyMatches(f: Filter, k: { playfield: number; playfield_name: string | null; feature: string; feature_path: string; author?: string; authors?: string[] }) {
+  if (f.world && String(k.playfield) !== f.world.trim() && !lower(k.playfield_name).includes(lower(f.world.trim()))) return false
+  if (f.feature) {
+    const want = f.feature.trim()
+    if (k.feature !== want && !k.feature.startsWith(`${want}/`) && !lower(k.feature_path).includes(lower(want))) return false
+  }
+  if (f.author) {
+    const names = k.author !== undefined ? [k.author] : (k.authors ?? [])
+    if (!names.some((a) => lower(a).includes(lower(f.author.trim())))) return false
+  }
+  return true
+}
+
+/** The record-level filters: tags, op, kind (the search is checked with the group's words too). */
+function itemMatches(f: Filter, i: { kind: Item["kind"]; op: Item["op"]; tags?: string[] }) {
+  if (f.op && i.op !== f.op) return false
+  if (f.kind && i.kind !== f.kind) return false
+  if (f.tags.length && !(i.tags?.length ? i.tags.some((t) => f.tags.includes(t)) : f.tags.includes("-"))) return false
+  return true
+}
+
+const itemHay = (i: { id: string; name: string; details?: string[]; tags?: string[]; kind: string; op: string }) =>
+  lower(`${i.name} ${i.id} ${i.kind} ${i.op} ${(i.details ?? []).join(" ")} ${(i.tags ?? []).map((t) => `#${t} ${t}`).join(" ")}`)
+
+const groupHay = (k: { playfield: number; playfield_name: string | null; feature: string; feature_path: string; author?: string; summary?: string }) =>
+  lower(`${k.playfield} ${k.playfield_name} ${k.feature} ${k.feature_path} ${k.author ?? ""} ${k.summary ?? ""}`)
+
+/** Whether any record-level filter (or a search) narrows a group to some of its records. */
+const narrowsItems = (f: Filter) => !!(f.q.trim() || f.tags.length || f.op || f.kind)
+
+/** The records of a group the filter keeps (none: the group is left out). */
+function keptItems<T extends { id: string; name: string; details?: string[]; tags?: string[]; kind: Item["kind"]; op: Item["op"] }>(f: Filter, group: Parameters<typeof groupHay>[0], items: T[]): T[] {
+  const ws = words(f.q)
+  const g = groupHay(group)
+  return items.filter((i) => itemMatches(f, i) && hasWords(ws.filter((w) => !g.includes(w)), itemHay(i)))
+}
+
+/** Usernames of accounts matching what is typed (GET /v1/accounts?search=), for suggestions. */
+function useAccountNames(search: string) {
+  const q = useQuery({
+    queryKey: ["content", "account-names", search],
+    queryFn: async () => (await unwrap(api.GET("/v1/accounts", { params: { query: { search: search || null, offset: 0, limit: 20 } } }))).map((a) => a.username),
+    staleTime: 60_000,
+    retry: false,
+  })
+  return q.data ?? []
+}
+
+/** World editor authors and matching accounts, authors first. */
+function useAuthorSuggestions(state: ContentState | undefined, typed: string): Suggestion[] {
+  const accounts = useAccountNames(typed.trim())
+  return useMemo(() => {
+    const authors = state?.authors ?? []
+    const seen = new Set(authors.map(lower))
+    return [
+      ...authors.map((a) => ({ value: a, detail: "world editor author" })),
+      ...accounts.filter((a) => !seen.has(lower(a))).map((a) => ({ value: a, detail: "account" })),
+    ]
+  }, [state?.authors, accounts])
+}
+
+const tidyTag = (t: string) =>
+  t
+    .trim()
+    .replace(/^#+/, "")
+    .toLowerCase()
+    .replace(/\s/g, "-")
+    .replace(/[^\p{L}\p{N}\-_/]/gu, "")
+
+function FilterBar({ filter, set, clear, state }: { filter: Filter; set: (f: Partial<Filter>) => void; clear: () => void; state: ContentState | undefined }) {
+  const playfields = usePlayfields()
+  const features = useQuery({ queryKey: ["content", "features"], queryFn: () => raw<FeatureRow[]>("GET", "/v1/content/features") })
+  const [typedAuthor, setTypedAuthor] = useState("")
+  const authors = useAuthorSuggestions(state, typedAuthor)
+  const worlds: Suggestion[] = useMemo(() => [...(playfields.data ?? new Map<number, string>())].map(([id, name]) => ({ value: String(id), label: name, detail: String(id) })), [playfields.data])
+  const featureOptions: Suggestion[] = useMemo(() => [{ value: "live", label: "Mimic live" }, { value: "feature", label: "New content" }, { value: "other", label: "Other" }, ...(features.data ?? []).map((f) => ({ value: f.id, label: f.path, detail: f.id }))], [features.data])
+  const tags: Suggestion[] = [...(state?.tags ?? []).map((t) => ({ value: t, label: `#${t}` })), { value: "-", label: "untagged" }]
+  const active = filter.q || filter.world || filter.feature || filter.author || filter.tags.length || filter.op || filter.kind
+  const sel = "h-8 rounded-lg border border-input bg-transparent px-2 text-sm dark:bg-input/30"
+  return (
+    <Card size="sm" className="overflow-visible">
+      <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-1.5 sm:col-span-2">
+          <Label htmlFor="cf-q">Search</Label>
+          <Input id="cf-q" value={filter.q} onChange={(e) => set({ q: e.target.value })} placeholder="Names, details, ids, #tags…" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="cf-world">World</Label>
+          <SuggestInput id="cf-world" value={filter.world} onChange={(world) => set({ world })} options={worlds} placeholder="Any world" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="cf-feature">Feature</Label>
+          <SuggestInput id="cf-feature" value={filter.feature} onChange={(feature) => set({ feature })} options={featureOptions} placeholder="Any feature" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="cf-author">Author</Label>
+          <SuggestInput id="cf-author" value={filter.author} onChange={(author) => set({ author })} onType={setTypedAuthor} options={authors} placeholder="Anyone" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="cf-tags">Tags (any of)</Label>
+          <TokenInput id="cf-tags" values={filter.tags} onChange={(t) => set({ tags: t })} options={tags} format={(t) => (t === "-" ? "untagged" : `#${t}`)} tidy={(t) => (t.trim() === "-" ? "-" : tidyTag(t))} placeholder="#approximate, #todo…" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="cf-op">Change</Label>
+          <select id="cf-op" className={sel} value={filter.op} onChange={(e) => set({ op: e.target.value as Filter["op"] })}>
+            <option value="">Any</option>
+            {OPS.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="cf-kind">Record</Label>
+          <div className="flex gap-2">
+            <select id="cf-kind" className={`${sel} flex-1`} value={filter.kind} onChange={(e) => set({ kind: e.target.value as Filter["kind"] })}>
+              <option value="">Any</option>
+              {KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {k === "trigger" ? "trigger wall" : k}
+                </option>
+              ))}
+            </select>
+            <Button variant="outline" disabled={!active} onClick={clear} title="Show everything">
+              <FilterXIcon data-icon="inline-start" />
+              Clear
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function Tags({ tags }: { tags?: string[] }) {
+  if (!tags?.length) return null
+  return (
+    <>
+      {tags.map((t) => (
+        <Badge key={t} variant="outline" className="ml-1 text-xs">
+          #{t}
+        </Badge>
+      ))}
+    </>
+  )
+}
+
 function useContentState() {
   return useQuery({ queryKey: ["content", "state"], queryFn: () => raw<ContentState>("GET", "/v1/content/state"), refetchInterval: 15_000 })
 }
 
-function Queue() {
+function Queue({ filter }: { filter: Filter }) {
   const queryClient = useQueryClient()
   const q = useQuery({ queryKey: ["content", "queue"], queryFn: () => raw<Change[]>("GET", "/v1/content/queue"), refetchInterval: 15_000 })
+  const shown = useMemo(
+    () => (q.data ?? []).filter((c) => keyMatches(filter, c)).map((c) => ({ c, items: keptItems(filter, c, c.items) })).filter(({ items }) => items.length > 0),
+    [q.data, filter],
+  )
+  const narrowed = narrowsItems(filter)
   const decide = useMutation({
     mutationFn: ({ verb, change, ids }: { verb: "approve" | "reject"; change: Change; ids?: string[] }) =>
       raw<{ records: number }>("POST", `/v1/content/${verb}`, { playfield: change.playfield, feature: change.feature, author: change.author, ids }),
@@ -134,9 +345,19 @@ function Queue() {
   if (q.error) return <ErrorAlert error={q.error} />
   if (!q.data) return <Skeleton className="h-32 w-full" />
   if (!q.data.length) return <Empty>Nothing waiting: the world editors' work is all approved (or rejected).</Empty>
+  if (!shown.length) return <Empty>Nothing waiting matches the filter ({q.data.length} change{q.data.length === 1 ? "" : "s"} hidden).</Empty>
   return (
     <div className="grid gap-4">
-      {q.data.map((c) => (
+      {shown.length < q.data.length && (
+        <p className="text-sm text-muted-foreground">
+          Showing {shown.length} of {q.data.length} changes.
+        </p>
+      )}
+      {shown.map(({ c, items }) => {
+        // with a filter, the buttons act on the records shown only
+        const some = narrowed && items.length < c.items.length
+        const ids = some ? items.map((i) => i.id) : undefined
+        return (
         <Card key={`${c.playfield}|${c.feature}|${c.author}`}>
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-2">
@@ -150,22 +371,23 @@ function Queue() {
             </CardTitle>
             <CardDescription>
               by {c.author || "unknown"} · {c.summary}
+              {some && ` · ${items.length} of ${c.items.length} records match the filter`}
             </CardDescription>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ verb: "approve", change: c })}>
+              <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ verb: "approve", change: c, ids })}>
                 <CheckIcon data-icon="inline-start" />
-                Approve all
+                {some ? (items.length === 1 ? "Approve this one" : `Approve these ${items.length}`) : "Approve all"}
               </Button>
-              <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ verb: "reject", change: c })}>
+              <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ verb: "reject", change: c, ids })}>
                 <XIcon data-icon="inline-start" />
-                Reject all
+                {some ? (items.length === 1 ? "Reject this one" : `Reject these ${items.length}`) : "Reject all"}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                disabled={preview.isPending}
+                disabled={preview.isPending || some}
                 onClick={() => preview.mutate(c)}
-                title={`Put it in the game for everyone for ${PREVIEW_MINUTES} minutes; then it comes back here unless you keep it`}
+                title={some ? "Previews take the whole change: clear the filter to preview it" : `Put it in the game for everyone for ${PREVIEW_MINUTES} minutes; then it comes back here unless you keep it`}
               >
                 <EyeIcon data-icon="inline-start" />
                 Preview
@@ -184,10 +406,11 @@ function Queue() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {c.items.map((i) => (
+                {items.map((i) => (
                   <TableRow key={i.id}>
                     <TableCell>
                       <span className="font-medium">{i.name}</span> <span className="text-xs text-muted-foreground">{i.kind}</span>
+                      <Tags tags={i.tags} />
                     </TableCell>
                     <TableCell>
                       <Badge variant={OP_VARIANT[i.op]}>{i.op}</Badge>
@@ -208,7 +431,8 @@ function Queue() {
             </Table>
           </CardContent>
         </Card>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -227,9 +451,13 @@ const ACTION = {
   revert: { label: "Revert", icon: XIcon, done: "Reverted: back in the queue" },
 } as const
 
-function History() {
+function History({ filter }: { filter: Filter }) {
   const queryClient = useQueryClient()
   const q = useQuery({ queryKey: ["content", "history"], queryFn: () => raw<HistoryEntry[]>("GET", "/v1/content/history"), refetchInterval: 15_000 })
+  const shown = useMemo(
+    () => (q.data ?? []).filter((e) => keyMatches(filter, e) && (!narrowsItems(filter) || keptItems(filter, e, e.edits).length > 0 || (!!filter.q && !filter.tags.length && !filter.op && !filter.kind && hasWords(words(filter.q), groupHay(e) + ` ${e.seq} ${lower(e.by)}`)))),
+    [q.data, filter],
+  )
   const act = useMutation({
     mutationFn: ({ seq, action }: { seq: number; action: HistoryEntry["actions"][number] }) => raw<HistoryEntry>("POST", `/v1/content/history/${seq}/${action}`),
     onSuccess: (_, v) => {
@@ -241,6 +469,7 @@ function History() {
   if (q.error) return <ErrorAlert error={q.error} />
   if (!q.data) return <Skeleton className="h-24 w-full" />
   if (!q.data.length) return <Empty>No approvals yet. Approved and previewed changes show up here, to undo or redo.</Empty>
+  if (!shown.length) return <Empty>No approval matches the filter.</Empty>
   return (
     <Card>
       <CardContent>
@@ -256,15 +485,16 @@ function History() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {q.data.map((e) => (
+            {shown.map((e) => (
               <TableRow key={e.seq}>
                 <TableCell className="text-muted-foreground">{e.seq}</TableCell>
                 <TableCell>
                   <span className="font-medium">{e.playfield_name ?? `Playfield ${e.playfield}`}</span>
                   <span className="ml-2 text-xs text-muted-foreground">{e.feature_path}</span>
                 </TableCell>
-                <TableCell className="text-sm" title={e.edits.map((x) => `${x.op} ${x.name}${x.details?.length ? ` (${x.details.join(", ")})` : ""}`).join("\n")}>
+                <TableCell className="text-sm" title={e.edits.map((x) => `${x.op} ${x.name}${x.details?.length ? ` (${x.details.join(", ")})` : ""}${x.tags?.length ? ` ${x.tags.map((t) => `#${t}`).join(" ")}` : ""}`).join("\n")}>
                   by {e.author || "unknown"} · {e.summary}
+                  <Tags tags={[...new Set(e.edits.flatMap((x) => x.tags ?? []))]} />
                 </TableCell>
                 <TableCell>
                   <Badge variant={STATUS[e.status].variant}>{STATUS[e.status].label}</Badge>
@@ -302,20 +532,15 @@ function toggle(list: string[], id: string, on: boolean) {
   return on ? [...new Set([...list, id])] : list.filter((x) => x !== id)
 }
 
-function RulesCard({ rules }: { rules: Rules }) {
+function RulesCard({ rules, state }: { rules: Rules; state: ContentState | undefined }) {
   const queryClient = useQueryClient()
   const features = useQuery({ queryKey: ["content", "features"], queryFn: () => raw<FeatureRow[]>("GET", "/v1/content/features") })
   const [draft, setDraft] = useState(rules)
-  const [authors, setAuthors] = useState(rules.auto_authors.join(", "))
+  const [authors, setAuthors] = useState(rules.auto_authors)
+  const [typedAuthor, setTypedAuthor] = useState("")
+  const authorOptions = useAuthorSuggestions(state, typedAuthor)
   const save = useMutation({
-    mutationFn: () =>
-      raw<Rules>("PUT", "/v1/content/rules", {
-        ...draft,
-        auto_authors: authors
-          .split(",")
-          .map((a) => a.trim())
-          .filter(Boolean),
-      }),
+    mutationFn: () => raw<Rules>("PUT", "/v1/content/rules", { ...draft, auto_authors: authors }),
     onSuccess: () => {
       toast.success("Rules saved")
       queryClient.invalidateQueries({ queryKey: ["content"] })
@@ -324,7 +549,7 @@ function RulesCard({ rules }: { rules: Rules }) {
   })
   const rows = features.data ?? []
   return (
-    <Card>
+    <Card className="overflow-visible">
       <CardHeader>
         <CardTitle>Rules</CardTitle>
         <CardDescription>
@@ -360,8 +585,8 @@ function RulesCard({ rules }: { rules: Rules }) {
           </TableBody>
         </Table>
         <div className="grid gap-2">
-          <Label htmlFor="auto-authors">Auto-approve authors (world editor usernames, comma-separated)</Label>
-          <Input id="auto-authors" value={authors} onChange={(e) => setAuthors(e.target.value)} placeholder="e.g. blake, hosttemple" />
+          <Label htmlFor="auto-authors">Auto-approve authors (world editor usernames)</Label>
+          <TokenInput id="auto-authors" values={authors} onChange={setAuthors} onType={setTypedAuthor} options={authorOptions} placeholder="Type a name: authors and accounts are suggested" />
         </div>
         <div>
           <Button disabled={save.isPending} onClick={() => save.mutate()}>
@@ -373,9 +598,16 @@ function RulesCard({ rules }: { rules: Rules }) {
   )
 }
 
-function Summary() {
+function Summary({ filter }: { filter: Filter }) {
   const [of, setOf] = useState<"approved" | "working">("approved")
   const q = useQuery({ queryKey: ["content", "summary", of], queryFn: () => raw<{ rows: SummaryRow[] }>("GET", `/v1/content/summary?of=${of}`) })
+  const ws = words(filter.q)
+  const rows = (q.data?.rows ?? []).filter(
+    (r) =>
+      keyMatches(filter, r) &&
+      (!filter.tags.length || filter.tags.some((t) => (t === "-" ? Object.keys(r.tags ?? {}).length === 0 : !!r.tags?.[t]))) &&
+      hasWords(ws, `${groupHay(r)} ${lower(r.authors.join(" "))} ${Object.keys(r.tags ?? {}).map((t) => `#${t} ${t}`).join(" ")}`),
+  )
   return (
     <Card>
       <CardHeader>
@@ -394,6 +626,8 @@ function Summary() {
           <Skeleton className="h-24 w-full" />
         ) : !q.data.rows.length ? (
           <Empty>Nothing yet.</Empty>
+        ) : !rows.length ? (
+          <Empty>Nothing matches the filter.</Empty>
         ) : (
           <Table>
             <TableHeader>
@@ -406,11 +640,12 @@ function Summary() {
                 <TableHead className="text-right">Walls</TableHead>
                 <TableHead className="text-right">Notes / scripts</TableHead>
                 <TableHead>Authors</TableHead>
+                <TableHead>Tags</TableHead>
                 <TableHead>Last change</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {q.data.rows.map((r) => (
+              {rows.map((r) => (
                 <TableRow key={`${r.playfield}|${r.feature}`}>
                   <TableCell>{r.playfield_name ?? r.playfield}</TableCell>
                   <TableCell>
@@ -424,6 +659,13 @@ function Summary() {
                     {r.notes} / {r.scripts}
                   </TableCell>
                   <TableCell className="text-sm">{r.authors.join(", ")}</TableCell>
+                  <TableCell className="text-sm">
+                    {Object.entries(r.tags ?? {}).map(([t, n]) => (
+                      <Badge key={t} variant="outline" className="mr-1 text-xs" title={`${n} record${n === 1 ? "" : "s"}`}>
+                        #{t} {n}
+                      </Badge>
+                    ))}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatRelative(r.updated)}</TableCell>
                 </TableRow>
               ))}
@@ -438,6 +680,7 @@ function Summary() {
 export function ContentPage() {
   const queryClient = useQueryClient()
   const state = useContentState()
+  const [filter, setFilter, clearFilter] = useFilter()
   const refresh = useMutation({
     mutationFn: () => raw<ContentState>("POST", "/v1/content/refresh"),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["content"] }),
@@ -466,9 +709,10 @@ export function ContentPage() {
           <AlertDescription>{state.data.source_error}</AlertDescription>
         </Alert>
       )}
+      <FilterBar filter={filter} set={setFilter} clear={clearFilter} state={state.data} />
       <section className="grid gap-3">
         <h2 className="font-heading text-lg font-semibold">Waiting for approval</h2>
-        <Queue />
+        <Queue filter={filter} />
       </section>
       <section className="grid gap-3">
         <h2 className="font-heading text-lg font-semibold">History</h2>
@@ -476,11 +720,11 @@ export function ContentPage() {
           Every approval, newest first. Undo takes a change out of the game (later changes to the same things stay); redo puts it back. Previews are in the game for everyone
           until you keep or revert them, or their time ends (then they wait above again).
         </p>
-        <History />
+        <History filter={filter} />
       </section>
       {/* (keyed: saved rules start a fresh draft) */}
-      {state.data && <RulesCard key={JSON.stringify(state.data.rules)} rules={state.data.rules} />}
-      <Summary />
+      {state.data && <RulesCard key={JSON.stringify(state.data.rules)} rules={state.data.rules} state={state.data} />}
+      <Summary filter={filter} />
     </div>
   )
 }
