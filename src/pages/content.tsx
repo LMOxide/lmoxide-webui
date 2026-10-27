@@ -42,7 +42,7 @@ interface ContentState {
 }
 
 interface Item {
-  kind: "placement" | "trigger" | "note" | "script"
+  kind: "placement" | "trigger" | "note" | "script" | "smash_rule"
   id: string
   name: string
   op: "added" | "changed" | "removed"
@@ -129,7 +129,7 @@ interface Filter {
   kind: "" | Item["kind"]
 }
 
-const KINDS: Item["kind"][] = ["placement", "trigger", "note", "script"]
+const KINDS: Item["kind"][] = ["placement", "trigger", "note", "script", "smash_rule"]
 const OPS: Item["op"][] = ["added", "changed", "removed"]
 
 function useFilter(): [Filter, (f: Partial<Filter>) => void, () => void] {
@@ -279,7 +279,7 @@ function FilterBar({ filter, set, clear, state }: { filter: Filter; set: (f: Par
               <option value="">Any</option>
               {KINDS.map((k) => (
                 <option key={k} value={k}>
-                  {k === "trigger" ? "trigger wall" : k}
+                  {k === "trigger" ? "trigger wall" : k === "smash_rule" ? "smash achievement" : k}
                 </option>
               ))}
             </select>
