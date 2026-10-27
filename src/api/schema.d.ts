@@ -368,6 +368,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/characters/{id}/achievements/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take achievements away from a character (to earn them again, or to fix a mistake): some by
+         *     id, or all of them. A removed exploration or collectible achievement's finds go too. Through
+         *     the game server: at once in game when the character is online, else in the database.
+         *     Scope: admin.
+         */
+        post: operations["remove_achievements"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config": {
         parameters: {
             query?: never;
@@ -841,18 +863,28 @@ export interface components {
              * @description Unix time it was earned.
              */
             achieved_at: number;
+            group?: string | null;
             /**
              * Format: int32
              * @description Lore tree tag id.
              */
             id: number;
-            /** @description Its name in the client data, e.g. "Global_Smash 1000 Monsters" (empty if unknown). */
+            /**
+             * @description Its name in the client data, e.g. "Global_Smash 1000 Monsters" (empty: not an
+             *     achievement, story or tutorial progress).
+             */
             name: string;
             /**
              * Format: int32
              * @description Achievement points.
              */
             points: number;
+            text?: string | null;
+            /**
+             * @description As the game shows it: its title ("Fiery Explorer"), the title of the achievement it is
+             *     part of ("Paleontologist") and its text ("Find the Volcano Summit in Dinosaur Rise.").
+             */
+            title?: string | null;
         };
         Effect: (components["schemas"]["EffectPackage"] & {
             /** @enum {string} */
@@ -1052,6 +1084,8 @@ export interface components {
             logged_in_at: number;
             /** Format: int32 */
             playfield?: number | null;
+            /** @description Where the character is now (x, y up, z); `null` until it is in play. */
+            position?: number[] | null;
             username: string;
         };
         Playfield: {
@@ -1069,6 +1103,26 @@ export interface components {
              * @description Playfield id; `null` while loading.
              */
             playfield?: number | null;
+        };
+        /** @description Achievements to take away: `ids`, or with `all` every one. */
+        RemoveAchievementsRequest: {
+            /**
+             * @description Remove every achievement, and the journal (finds, defeats, visits) and achievement
+             *     counters, so they can be earned again. Story and tutorial progress (tags that aren't
+             *     achievements), stars and XP stay.
+             */
+            all?: boolean;
+            /** @description Achievement ids (tags) to remove; the earned "all of" achievements above them go too. */
+            ids?: number[];
+        };
+        RemovedAchievements: {
+            /**
+             * @description The character was online: its client was updated at once (counters show again after
+             *     its next login).
+             */
+            online: boolean;
+            /** @description The achievement ids removed. */
+            removed: number[];
         };
         Renew: {
             /** @description As in the login: a long session (`--remember-days`) or a short one. */
@@ -1898,6 +1952,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Character"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_achievements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveAchievementsRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemovedAchievements"];
                 };
             };
             404: {

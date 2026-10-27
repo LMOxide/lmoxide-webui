@@ -1,15 +1,134 @@
-import { useQuery } from "@tanstack/react-query"
-import { StarIcon } from "lucide-react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { StarIcon, Trash2Icon } from "lucide-react"
+import { useState } from "react"
 import { useParams } from "react-router"
+import { toast } from "sonner"
 
 import { api, unwrap } from "@/api/client"
 import { Empty, ErrorAlert, Field, Fields, PageHeader, PlayfieldName } from "@/components/common"
+import { ConfirmDialog } from "@/components/moderation"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { numberFormat } from "@/lib/format"
+import { useAuth } from "@/lib/auth-context"
+import { formatRelative, formatTime, numberFormat } from "@/lib/format"
 import { useMinifigures, useTokens } from "@/lib/queries"
+
+type Earned = NonNullable<Awaited<ReturnType<typeof loadCharacter>>>["achievements"][number]
+
+const loadCharacter = (id: number) => unwrap(api.GET("/v1/characters/{id}", { params: { path: { id } } }))
+
+/** "Paleontologist > Fiery Explorer", as the game shows it (else the client's internal name). */
+const achievementLabel = (a: Earned) => (a.title ? `${a.group ? `${a.group} > ` : ""}${a.title}` : a.name)
+
+/**
+ * The character's achievements, with Remove (one) and Remove all for admins: to earn them again
+ * while testing, or to fix a mistake. Tags that aren't achievements (story and tutorial
+ * progress) are only counted, and always kept.
+ */
+function Achievements({ id, earned }: { id: number; earned: Earned[] }) {
+  const queryClient = useQueryClient()
+  const admin = useAuth().can("admin")
+  const [q, setQ] = useState("")
+  const achievements = earned.filter((a) => a.name).sort((a, b) => b.achieved_at - a.achieved_at)
+  const progress = earned.length - achievements.length
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean)
+  const shown = achievements.filter((a) => {
+    const hay = `${achievementLabel(a)} ${a.name} ${a.text ?? ""} ${a.id}`.toLowerCase()
+    return words.every((w) => hay.includes(w))
+  })
+  const points = achievements.reduce((n, a) => n + a.points, 0)
+  const remove = async (body: { ids?: number[]; all?: boolean }) => {
+    const r = await unwrap(api.POST("/v1/characters/{id}/achievements/remove", { params: { path: { id } }, body }))
+    toast.success(
+      `Removed ${r.removed.length} achievement${r.removed.length === 1 ? "" : "s"}${r.online ? " (in game now)" : ""}${body.all && r.online ? ": counters reset after the next login" : ""}`,
+    )
+    await queryClient.invalidateQueries({ queryKey: ["character", id] })
+  }
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader>
+        <CardTitle>Achievements</CardTitle>
+        <CardDescription>
+          {achievements.length} earned, {numberFormat.format(points)} points
+          {progress > 0 && ` · ${progress} story and tutorial tag${progress === 1 ? "" : "s"} (always kept)`}
+          {admin && ". Removing one also removes the earned “all of” achievement above it, so both can be earned again; stars and XP already given stay."}
+        </CardDescription>
+        {(achievements.length > 0) && (
+          <div className="flex flex-wrap gap-2">
+            <Input className="max-w-sm" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title, text, id…" aria-label="Search achievements" />
+            {admin && (
+              <ConfirmDialog
+                trigger={
+                  <Button variant="outline">
+                    <Trash2Icon data-icon="inline-start" />
+                    Remove all…
+                  </Button>
+                }
+                title="Remove every achievement?"
+                description={`All ${achievements.length} achievements, and the journal they come from (places found, enemies defeated, worlds visited) and the achievement counters, so they can all be earned again. Story and tutorial progress, stars and XP stay.`}
+                action="Remove all"
+                onConfirm={() => remove({ all: true })}
+              />
+            )}
+          </div>
+        )}
+      </CardHeader>
+      <CardContent>
+        {achievements.length === 0 ? (
+          <Empty>No achievements yet.</Empty>
+        ) : !shown.length ? (
+          <Empty>No achievement matches.</Empty>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Achievement</TableHead>
+                <TableHead className="text-right">Points</TableHead>
+                <TableHead>Earned</TableHead>
+                {admin && <TableHead />}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {shown.map((a) => (
+                <TableRow key={a.id}>
+                  <TableCell>
+                    <div className="font-medium">
+                      {achievementLabel(a)} <span className="font-mono text-xs text-muted-foreground">[{a.id}]</span>
+                    </div>
+                    {a.text && <div className="text-xs text-muted-foreground">{a.text}</div>}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{a.points}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground" title={formatTime(a.achieved_at)}>
+                    {a.achieved_at ? formatRelative(a.achieved_at) : "—"}
+                  </TableCell>
+                  {admin && (
+                    <TableCell className="text-right">
+                      <ConfirmDialog
+                        trigger={
+                          <Button size="sm" variant="ghost" aria-label={`Remove ${achievementLabel(a)}`}>
+                            <Trash2Icon />
+                          </Button>
+                        }
+                        title={`Remove “${achievementLabel(a)}”?`}
+                        description="It can be earned again (a place's find is forgotten too). An earned “all of” achievement above it goes as well."
+                        action="Remove"
+                        onConfirm={() => remove({ ids: [a.id] })}
+                      />
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 /** Bit numbers set in an upgrade mask. */
 function bits(mask: number) {
@@ -22,7 +141,7 @@ export function CharacterPage() {
   const id = Number(useParams().id)
   const q = useQuery({
     queryKey: ["character", id],
-    queryFn: () => unwrap(api.GET("/v1/characters/{id}", { params: { path: { id } } })),
+    queryFn: () => loadCharacter(id),
   })
   const figs = useMinifigures().data
   const tokenInfo = useTokens().data
@@ -169,6 +288,7 @@ export function CharacterPage() {
               )}
             </CardContent>
           </Card>
+          <Achievements id={c.id} earned={c.achievements} />
         </div>
       )}
     </>
