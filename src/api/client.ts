@@ -72,6 +72,26 @@ export async function unwrap<T>(p: Promise<FetchResult<T>>): Promise<T> {
   )
 }
 
+/**
+ * A call to a route that isn't in openapi.json (the game server's forwarded routes, e.g. the
+ * world content queue `/v1/content/...`); throws `ApiError` like `unwrap`.
+ */
+export async function raw<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  if (body !== undefined) headers["Content-Type"] = "application/json"
+  let res: Response
+  try {
+    res = await fetch(API_URL + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
+  } catch {
+    throw new ApiError(0, "network", "Can't reach the API server.")
+  }
+  const json = await res.json().catch(() => null)
+  if (res.ok) return json as T
+  if (res.status === 401 && token && json?.error?.code === "unauthorized") onUnauthorized?.()
+  throw new ApiError(res.status, json?.error?.code ?? "http_" + res.status, json?.error?.message ?? res.statusText ?? "Request failed")
+}
+
 export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) {
     switch (e.code) {

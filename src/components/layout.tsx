@@ -28,6 +28,7 @@ const NAV: { to: string; label: string; scope?: ApiScope }[] = [
   { to: "/server", label: "Server", scope: "moderate" },
   { to: "/api-keys", label: "API keys", scope: "admin" },
   { to: "/audit", label: "Audit log", scope: "admin" },
+  { to: "/content", label: "World content", scope: "admin" },
 ]
 
 function NavLinks({ vertical, onNavigate }: { vertical?: boolean; onNavigate?: () => void }) {

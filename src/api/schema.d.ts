@@ -195,6 +195,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trade the current session for a new one (a new token and expiry; the old token stops
+         *     working), so a remembered sign-in lasts while it is used. Banned accounts can't renew.
+         */
+        post: operations["renew"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/broadcast": {
         parameters: {
             query?: never;
@@ -206,6 +226,125 @@ export interface paths {
         put?: never;
         /** Send a chat line from "Server" to everyone online. Scope: moderate. */
         post: operations["broadcast"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalog/animations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The client's animations: animation attributes (what `!anim <attribute>` plays), motion sets
+         *     and anim graphs. Scope: read.
+         */
+        get: operations["animation_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalog/bcc-states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The character states (`!state <value>`) and substates the client knows, by name. Scope: read. */
+        get: operations["bcc_states"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalog/effects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The client's effect packages and particle systems: timelines, particles, sounds, animation
+         *     attributes, code hooks, Lua, and the items and spells that use them
+         *     (tools/re/extract_effect_catalog.py). Scope: read.
+         */
+        get: operations["effect_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalog/monsters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every monster data (look) in the client, with its motion set, anim graph, death effect and
+         *     what uses it: the choices for `!skin <id>`. Scope: read.
+         */
+        get: operations["monster_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalog/sounds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A sound an effect package plays (`sounds[].id`), as Ogg Vorbis from the client's RDB (type
+         *     1020002). Needs `--client-dir`; 503 without it. Scope: read.
+         */
+        get: operations["effect_sound"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalog/test-commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the test commands accept: commands with usage, target kinds with their numbered targets,
+         *     test scenarios, dialogues, loot kinds, spawnable enemies and smashables, and monster data
+         *     looks (the game server's devcmd.rs). For tools that offer them as choices. Scope: read.
+         */
+        get: operations["test_commands"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -351,6 +490,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/players/{account_id}/command": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a test command (the game server's devcmd.rs: `!fx`, `!skin`, `!state`, `!tp`, ...) as the
+         *     player, as if typed in chat; the player's GM level still decides whether it runs. For tools
+         *     such as an effect browser that preview things in the game client. Scope: admin.
+         */
+        post: operations["player_command"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/players/{account_id}/kick": {
         parameters: {
             query?: never;
@@ -450,6 +610,38 @@ export interface components {
             gm_level?: number | null;
             username?: string | null;
         };
+        /** @description RDB 1050003: an EMotion FX anim graph (blend setup). */
+        AnimGraph: {
+            /** @description Its parameters: the animation attributes it reacts to. */
+            attributes: string[];
+            /** Format: int32 */
+            id: number;
+            /** @description The motion ids its nodes play. */
+            motions: string[];
+            name: string;
+        };
+        AnimationAttribute: {
+            /** @description Anim graphs with this parameter. */
+            graphs: number[];
+            /** @description e.g. `limbostart` */
+            name: string;
+            /**
+             * Format: int32
+             * @description The package `!anim <name>` plays.
+             */
+            package?: number | null;
+            /** @description Effect packages that set it. */
+            packages: number[];
+        };
+        /**
+         * @description Motion sets, anim graphs and the animation attributes effect packages set
+         *     (data/animations.json, tools/re/extract_animations.py).
+         */
+        AnimationCatalog: {
+            anim_graphs: components["schemas"]["AnimGraph"][];
+            attributes: components["schemas"]["AnimationAttribute"][];
+            motion_sets: components["schemas"]["MotionSet"][];
+        };
         ApiKey: {
             /** Format: int64 */
             created_at: number;
@@ -498,6 +690,25 @@ export interface components {
             days?: number | null;
             reason?: string | null;
         };
+        BccState: {
+            /** @description What the client does in it, where known. */
+            about?: string;
+            /** @description The action groups allowed in it. */
+            groups: string[];
+            name: string;
+            /** Format: int32 */
+            priority?: number | null;
+            /** Format: int32 */
+            value: number;
+        };
+        /**
+         * @description The character states the client defines (stat 20, BCCState: `!state <value>`) and substates,
+         *     from its behaviour tree (data/bcc_states.json, tools/re/extract_bcc_states.py).
+         */
+        BccStates: {
+            states: components["schemas"]["BccState"][];
+            substates: components["schemas"]["BccState"][];
+        };
         BroadcastRequest: {
             /** @description 1-500 characters, shown in every player's chat from "Server". */
             message: string;
@@ -517,6 +728,14 @@ export interface components {
                 [key: string]: {
                     [key: string]: number;
                 };
+            };
+            /** @description What the character defeated, by name (enemies, champions, bosses, smashables). */
+            defeats: {
+                [key: string]: components["schemas"]["DefeatCount"];
+            };
+            /** @description Collectibles and places found ("<playfield>:<world object name>") -> unix time. */
+            finds: {
+                [key: string]: number;
             };
             /** Format: int32 */
             id: number;
@@ -546,6 +765,10 @@ export interface components {
             upgrades: {
                 [key: string]: number;
             };
+            /** @description Playfields entered, by playfield id. */
+            visits: {
+                [key: string]: components["schemas"]["VisitCount"];
+            };
             /**
              * Format: int64
              * @description Player XP.
@@ -566,6 +789,23 @@ export interface components {
             /** Format: int64 */
             stars: number;
         };
+        CommandRequest: {
+            /** @description A test command as typed in chat, e.g. `!fx 163540`, `!skin 2212`, `!state 29`. */
+            command: string;
+        };
+        CommandResult: {
+            /**
+             * Format: int32
+             * @description How many players it reached (0: not online).
+             */
+            affected: number;
+            /**
+             * @description What the server answered in the player's chat while running it (e.g. `effect package
+             *     1748 (12 of 2518)`, a usage line, `Test commands need a GM level.`). Lines that come
+             *     later (after a teleport, during a dialogue) aren't here.
+             */
+            replies: string[];
+        };
         CreatedApiKey: {
             key: components["schemas"]["ApiKey"];
             /** @description The secret, shown only now: send as `Authorization: Bearer <secret>`. */
@@ -574,6 +814,19 @@ export interface components {
         Credentials: {
             password: string;
             username: string;
+        };
+        DefeatCount: {
+            /** Format: int64 */
+            count: number;
+            /**
+             * Format: int64
+             * @description Unix times of the first and the last.
+             */
+            first_at: number;
+            /** @description enemy, champion, boss or smashable */
+            kind: string;
+            /** Format: int64 */
+            last_at: number;
         };
         Done: {
             /**
@@ -601,6 +854,38 @@ export interface components {
              */
             points: number;
         };
+        Effect: (components["schemas"]["EffectPackage"] & {
+            /** @enum {string} */
+            kind: "effectpackage";
+        }) | (components["schemas"]["ParticleSystem"] & {
+            /** @enum {string} */
+            kind: "particlesystem";
+        });
+        /**
+         * @description The client's effect packages and particle systems (data/effect_catalog.json,
+         *     tools/re/extract_effect_catalog.py).
+         */
+        EffectCatalog: {
+            effects: components["schemas"]["Effect"][];
+        };
+        EffectPackage: {
+            /** @description Animation attributes it sets (`limbostart`, `chainattack`, ...; GET /v1/catalog/animations). */
+            animation_attributes: string[];
+            /** @description Code hooks its timelines start at (`onhit`, `charge`, `execute`, ...): `!fx <id> <hook>`. */
+            code_hooks: string[];
+            /**
+             * Format: int32
+             * @description RDB 1000622 id.
+             */
+            id: number;
+            looping: boolean;
+            /** @description Lua snippets (at most 400 characters each). */
+            lua: string[];
+            particles: components["schemas"]["Particle"][];
+            sounds: components["schemas"]["Sound"][];
+            timelines: components["schemas"]["Timeline"][];
+            used_by?: components["schemas"]["UsedBy"][];
+        };
         ErrorBody: {
             error: components["schemas"]["ErrorDetail"];
         };
@@ -612,6 +897,23 @@ export interface components {
         KickRequest: {
             /** @description Shown to the player in chat. */
             reason?: string | null;
+        };
+        Login: {
+            password: string;
+            /**
+             * @description Stay signed in: the session lasts `--remember-days` instead of `--session-ttl-hours`
+             *     (for a token kept across browser restarts; renew it with `/v1/auth/renew`).
+             */
+            remember?: boolean;
+            username: string;
+        };
+        Look: {
+            /** @description `enemy`, `smashable`, `npc` or `pet` */
+            kind: string;
+            /** Format: int32 */
+            monster_data: number;
+            /** @description Names of the characters with this look. */
+            names: string[];
         };
         MaintenanceRequest: {
             enabled: boolean;
@@ -654,6 +956,60 @@ export interface components {
             /** @description e.g. "Fast", "Lionhearted". */
             name: string;
         };
+        /**
+         * @description Every monster data (RDB 1010514): the looks `!skin <id>` takes (data/monster_data.json,
+         *     tools/re/extract_monster_data.py).
+         */
+        MonsterCatalog: {
+            monster_data: components["schemas"]["MonsterData"][];
+        };
+        MonsterData: {
+            /** Format: int32 */
+            actor?: number | null;
+            /**
+             * Format: int32
+             * @description Its anim graph (`anim_graphs`): which animation attributes it reacts to.
+             */
+            anim_graph?: number | null;
+            /**
+             * Format: int32
+             * @description The effect package played when it is defeated.
+             */
+            death_effect_package?: number | null;
+            /** Format: int32 */
+            id: number;
+            /** Format: int32 */
+            mesh?: number | null;
+            /** @description Minifigure item templates with this body (GET /v1/minifigures). */
+            minifigures: number[];
+            /**
+             * Format: int32
+             * @description Its motions (GET /v1/catalog/animations `motion_sets`).
+             */
+            motion_set?: number | null;
+            /** @description The designers' name, e.g. `minotaur_monster_boss`. */
+            name: string;
+            /** @description What the world places with this look. */
+            used_by: components["schemas"]["MonsterUser"][];
+        };
+        MonsterUser: {
+            /** @description enemy, smashable or npc */
+            kind: string;
+            name: string;
+        };
+        Motion: {
+            /** @description The exported .xsm file. */
+            file: string;
+            /** @description e.g. `idle`, `ability_1` */
+            id: string;
+        };
+        /** @description RDB 1050004: a look's motions by id. */
+        MotionSet: {
+            /** Format: int32 */
+            id: number;
+            motions: components["schemas"]["Motion"][];
+            name: string;
+        };
         NewAccount: {
             /** Format: int32 */
             gm_level?: number;
@@ -664,6 +1020,22 @@ export interface components {
         NewApiKey: {
             name: string;
             scope: components["schemas"]["ApiScope"];
+        };
+        Particle: {
+            /**
+             * Format: int32
+             * @description RDB 1010207 id (`null`: not in the client's name index).
+             */
+            id?: number | null;
+            /** @description Resource name (`null`: a package names it by id and the index has no name for it). */
+            name?: string | null;
+        };
+        ParticleSystem: {
+            emitters: string[];
+            /** Format: int32 */
+            id: number;
+            scripts: string[];
+            used_by?: components["schemas"]["UsedBy"][];
         };
         Player: {
             /** Format: int32 */
@@ -686,6 +1058,8 @@ export interface components {
             /** Format: int32 */
             id: number;
             name: string;
+            /** @description A `!tp` destination (with an arrival point); the others are the tutorial, layers, test maps. */
+            teleport: boolean;
         };
         /** @description A player as anyone may see them (in-game names only). */
         PublicPlayer: {
@@ -695,6 +1069,10 @@ export interface components {
              * @description Playfield id; `null` while loading.
              */
             playfield?: number | null;
+        };
+        Renew: {
+            /** @description As in the login: a long session (`--remember-days`) or a short one. */
+            remember?: boolean;
         };
         /** @description How this API is set up, for clients that adapt to it (always public). */
         ServerConfig: {
@@ -728,6 +1106,28 @@ export interface components {
             /** @description `null` removes the password (the account can't log in). */
             password?: string | null;
         };
+        Sound: {
+            /**
+             * Format: int32
+             * @description RDB 1020002 id (Ogg Vorbis): GET /v1/catalog/sounds/{id}. `null`: not in the client.
+             */
+            id?: number | null;
+            /** @description As the package names it, e.g. `sfx\swishes\swish_blade_throw_1.wav`. */
+            path: string;
+        };
+        SpawnCount: {
+            /** Format: int32 */
+            count: number;
+            name: string;
+        };
+        Spawnable: {
+            /** @description `enemy` or `smashable` */
+            kind: string;
+            /** Format: int32 */
+            level: number;
+            name: string;
+            playfields: number[];
+        };
         Status: {
             /** @description Whether the game server answered. */
             game_server_online: boolean;
@@ -741,6 +1141,93 @@ export interface components {
              */
             started_at?: number | null;
             version?: string | null;
+        };
+        Target: {
+            label: string;
+            /**
+             * Format: int32
+             * @description For `!goto <kind> <n>` (from 1).
+             */
+            n: number;
+            /** Format: int32 */
+            playfield: number;
+            /** @description x, y, z */
+            pos: number[];
+        };
+        TargetKind: {
+            about: string;
+            kind: string;
+            targets: components["schemas"]["Target"][];
+        };
+        /**
+         * @description What the test commands accept, for tools that offer them as choices (the game server's
+         *     devcmd.rs). Targets and spawnable names come from the world as loaded; their numbers are
+         *     what `!goto <kind> <n>`, `!test <n>` and `!dialog <n>` take.
+         */
+        TestCatalog: {
+            commands: components["schemas"]["TestCommand"][];
+            /** @description `!dialog <n>` */
+            dialogues: components["schemas"]["TestDialogue"][];
+            /** @description `!list <kind>` / `!goto <kind> [n]` */
+            kinds: components["schemas"]["TargetKind"][];
+            /** @description `!skin <monster data>`: the looks of the world's characters and smashables */
+            looks: components["schemas"]["Look"][];
+            /** @description `!loot <kind>` */
+            loot_kinds: string[];
+            /** @description `!test <n|label>` */
+            scenarios: components["schemas"]["TestScenario"][];
+            /** @description `!spawn [count] <name>`: enemies and smashables */
+            spawnable: components["schemas"]["Spawnable"][];
+        };
+        TestCommand: {
+            about: string;
+            /** @description e.g. `!goto <kind> [n]` */
+            usage: string;
+        };
+        TestDialogue: {
+            /**
+             * Format: int32
+             * @description For `!dialog <n>` (from 1).
+             */
+            n: number;
+            npc: string;
+            /** Format: int32 */
+            playfield: number;
+        };
+        TestScenario: {
+            about: string;
+            label: string;
+            /**
+             * Format: int32
+             * @description For `!test <n>` (from 1).
+             */
+            n: number;
+            spawn: components["schemas"]["SpawnCount"][];
+            /** @description Minifigure names of the team it sets, the first active; empty: the team stays. */
+            team: string[];
+        };
+        /** @description One part of a package: a particle, a sound, an animation attribute, Lua, ... */
+        Timeline: {
+            /**
+             * Format: float
+             * @description Seconds; `null` when the part sets none (it lasts as long as its content, e.g. a sound)
+             *     or lasts until the package is stopped (`until_stopped`). 0: an instant (Lua, an attribute).
+             */
+            duration?: number | null;
+            /** @description The code hook that starts this part's timeline (`null`: when the package starts). */
+            hook?: string | null;
+            name: string;
+            /**
+             * Format: float
+             * @description Seconds after the package (or its code hook) starts.
+             */
+            start: number;
+            /** @description self, target, client, ground, other, mount. */
+            target: string;
+            /** @description particle, sound, emotionfxattribute, lua, environmenteffect, movement, camerapath, ... */
+            type: string;
+            /** @description The designers' "forever": it lasts until the package is stopped. */
+            until_stopped: boolean;
         };
         Token: {
             /** Format: int32 */
@@ -759,6 +1246,28 @@ export interface components {
             gained: number;
             /** Format: int64 */
             spent: number;
+        };
+        /**
+         * @description An item template (RDB 1000620) or spell (1000621) whose data mention the id (a byte search:
+         *     a few may be coincidences).
+         */
+        UsedBy: {
+            /** Format: int32 */
+            id: number;
+            name?: string | null;
+            /** @description `item` or `spell` */
+            rdb: string;
+        };
+        VisitCount: {
+            /** Format: int64 */
+            count: number;
+            /**
+             * Format: int64
+             * @description Unix times of the first and the last.
+             */
+            first_at: number;
+            /** Format: int64 */
+            last_at: number;
         };
     };
     responses: never;
@@ -1079,7 +1588,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Credentials"];
+                "application/json": components["schemas"]["Login"];
             };
         };
         responses: {
@@ -1165,6 +1674,38 @@ export interface operations {
             };
         };
     };
+    renew: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description optional */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Renew"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     broadcast: {
         parameters: {
             query?: never;
@@ -1184,6 +1725,158 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Done"];
+                };
+            };
+        };
+    };
+    animation_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnimationCatalog"];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    bcc_states: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BccStates"];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    effect_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectCatalog"];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    monster_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonsterCatalog"];
+                };
+            };
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    effect_sound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/ogg": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    test_commands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestCatalog"];
                 };
             };
         };
@@ -1384,6 +2077,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    player_command: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommandRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandResult"];
                 };
             };
         };
