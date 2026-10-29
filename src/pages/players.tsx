@@ -3,7 +3,7 @@ import { BanIcon, LogOutIcon, RefreshCwIcon } from "lucide-react"
 import { Link } from "react-router"
 
 import { api, unwrap } from "@/api/client"
-import { Empty, ErrorAlert, GmBadge, PageHeader, PlayfieldName } from "@/components/common"
+import { Empty, ErrorAlert, GmBadge, ModeBadge, PageHeader, PlayfieldName } from "@/components/common"
 import { BanDialog, KickDialog } from "@/components/moderation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -11,6 +11,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
 import { formatSince, formatTime } from "@/lib/format"
+
+/** 0–2 are the game modes' main copies of a world; 3 and up are extra copies. */
+const copyTitle = (copy: number | null | undefined) =>
+  copy == null ? undefined : copy <= 2 ? "The mode's main copy" : "An extra copy (a team's world, an open world past its cap, a preview)"
 
 export function PlayersPage() {
   const { can } = useAuth()
@@ -51,7 +55,9 @@ export function PlayersPage() {
                   <TableRow>
                     <TableHead>Minifigure</TableHead>
                     <TableHead>Account</TableHead>
+                    <TableHead>Mode</TableHead>
                     <TableHead>Where</TableHead>
+                    <TableHead className="text-right">Copy</TableHead>
                     <TableHead>Online for</TableHead>
                     {moderate && <TableHead className="w-0" />}
                   </TableRow>
@@ -75,7 +81,13 @@ export function PlayersPage() {
                           </span>
                         </TableCell>
                         <TableCell>
+                          <ModeBadge mode={p.mode} />
+                        </TableCell>
+                        <TableCell>
                           <PlayfieldName id={p.playfield} />
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums" title={copyTitle(p.copy)}>
+                          {p.copy ?? <span className="text-muted-foreground">—</span>}
                         </TableCell>
                         <TableCell title={formatTime(p.logged_in_at)}>{formatSince(p.logged_in_at)}</TableCell>
                         {moderate && (

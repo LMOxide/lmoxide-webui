@@ -97,3 +97,35 @@ UI: `src/pages/audit.tsx` could link targets to `/accounts/{id}`.
 **Done:** `target` is the username for account actions, and the new `target_account_id` links it to
 `/accounts/{id}` on the audit page. That page shows not found if the account has since been
 deleted.
+
+# Game modes (2026-10-28)
+
+Found while adding the game modes (Progression, Maxxed, World Editor), `copy` and
+`GET /v1/instances` to the UI. Nothing here blocks it; the UI works with the API as it is.
+
+## 8. `mode` and `kind` as enums in the schema
+
+`mode` (on `Character`, `CharacterSummary`, `PlayerOnline`, `Instance`) and `Instance.kind` are
+plain `string`s in `openapi.json`, with the values only in the description. As
+`enum: [progression, maxed, world-editor]` and `enum: [main, extra, preview]` the generated
+types would catch a typo or a new mode at `pnpm typecheck`.
+
+UI: `MODES`/`modeName()` in `src/lib/format.ts` and `KIND_*` in `src/pages/instances.tsx` would
+use the generated union instead of `string`. An unknown mode shows as its raw id meanwhile.
+
+## 9. Game mode on the public "who's online" list
+
+`GET /v1/online` (public) gives a name and playfield but no `mode`, and `/v1/status` has one
+`players_online` total. If which mode someone plays isn't private, add `mode` to `/v1/online`
+(and perhaps a per-mode count to `/v1/status`) so the status page can say it.
+
+UI: `src/pages/status.tsx` would show a mode badge per player, like the players page.
+
+## 10. What kind of copy a player is in
+
+`/v1/players` items have `copy`, but whether copy 4 is a team's world, an overflow copy of an open
+world or a preview only shows in `/v1/instances`, which needs moderate scope (`/v1/players` needs
+read). A `kind` (`main` | `extra` | `preview`) next to `copy` would let the players page say it.
+
+UI: `src/pages/players.tsx` shows the copy number, with a tooltip saying 0–2 are the modes' main
+copies and 3 and up extra ones.

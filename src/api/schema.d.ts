@@ -407,6 +407,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The running copies of worlds (game modes' main copies, team copies, previews) with their
+         *     players and NPCs, and the AI's tick time. Scope: moderate.
+         */
+        get: operations["instances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/maintenance": {
         parameters: {
             query?: never;
@@ -771,6 +791,8 @@ export interface components {
             minifigure_ranks: {
                 [key: string]: number;
             };
+            /** @description The game mode the character belongs to: `progression`, `maxed` or `world-editor`. */
+            mode: string;
             name: string;
             /** Format: int32 */
             playfield: number;
@@ -800,6 +822,8 @@ export interface components {
         CharacterSummary: {
             /** Format: int32 */
             id: number;
+            /** @description The game mode the character belongs to: `progression`, `maxed` or `world-editor`. */
+            mode: string;
             name: string;
             /** Format: int32 */
             playfield: number;
@@ -925,6 +949,59 @@ export interface components {
             /** @description Stable machine-readable code, e.g. `unauthorized`, `forbidden`, `not_found`. */
             code: string;
             message: string;
+        };
+        /** @description A running copy of a world. */
+        Instance: {
+            /**
+             * Format: int32
+             * @description Characters in it (players and the NPCs that joined the world: pets, escorts).
+             */
+            characters: number;
+            /**
+             * Format: int32
+             * @description 0, 1, 2: the progression, maxed and world editor modes' main copies; 3 and up: extra
+             *     copies (a team's pocket world, an open world past its cap, a preview).
+             */
+            copy: number;
+            /**
+             * Format: int32
+             * @description The key clients know it by.
+             */
+            key: number;
+            /** @description `main`, `extra` or `preview`. */
+            kind: string;
+            /** @description Its game mode: `progression`, `maxed` or `world-editor`. */
+            mode: string;
+            /**
+             * Format: int32
+             * @description Its NPCs and smashables.
+             */
+            npcs: number;
+            /** Format: int32 */
+            players: number;
+            /** Format: int32 */
+            playfield: number;
+            /**
+             * Format: int32
+             * @description A preview's owner (character id).
+             */
+            preview_owner?: number | null;
+        };
+        /** @description Every running copy of a world, and how long the NPCs' AI takes. */
+        Instances: {
+            /** Format: float */
+            ai_tick_max_ms: number;
+            /**
+             * Format: float
+             * @description The last AI tick (every copy with players), ms, and the longest in the last minute.
+             */
+            ai_tick_ms: number;
+            instances: components["schemas"]["Instance"][];
+            /**
+             * Format: int32
+             * @description Players an open world's copy takes before arrivals get another.
+             */
+            open_world_cap: number;
         };
         KickRequest: {
             /** @description Shown to the player in chat. */
@@ -1075,6 +1152,11 @@ export interface components {
             /** Format: int32 */
             character_id: number;
             character_name: string;
+            /**
+             * Format: int32
+             * @description Which running copy of the playfield (`/v1/instances`); `null` until it is in play.
+             */
+            copy?: number | null;
             /** Format: int32 */
             gm_level: number;
             /**
@@ -1082,6 +1164,8 @@ export interface components {
              * @description Unix time.
              */
             logged_in_at: number;
+            /** @description The character's game mode: `progression`, `maxed` or `world-editor`. */
+            mode?: string | null;
             /** Format: int32 */
             playfield?: number | null;
             /** @description Where the character is now (x, y up, z); `null` until it is in play. */
@@ -2012,6 +2096,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ServerConfig"];
+                };
+            };
+        };
+    };
+    instances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instances"];
+                };
+            };
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

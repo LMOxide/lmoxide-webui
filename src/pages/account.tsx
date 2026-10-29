@@ -337,7 +337,7 @@ export function AccountPage() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Character</CardTitle>
+                <CardTitle>Characters</CardTitle>
               </CardHeader>
               <CardContent>
                 <CharactersTable characters={a.characters} link />

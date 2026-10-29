@@ -133,7 +133,7 @@ export function MePage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Character</CardTitle>
+              <CardTitle>Characters</CardTitle>
             </CardHeader>
             <CardContent>{a ? <CharactersTable characters={a.characters} link={can("read")} /> : <Skeleton className="h-16" />}</CardContent>
           </Card>

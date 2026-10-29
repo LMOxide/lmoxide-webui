@@ -4,8 +4,9 @@ import type { ReactNode } from "react"
 import { errorMessage, type Schemas } from "@/api/client"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { formatTime } from "@/lib/format"
+import { formatTime, modeName } from "@/lib/format"
 import { useGmLevels, usePlayfields } from "@/lib/queries"
 
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
@@ -71,6 +72,25 @@ export function PlayfieldName({ id }: { id: number | null | undefined }) {
   const { data } = usePlayfields()
   if (id == null) return <span className="text-muted-foreground">Loading in…</span>
   return <>{data?.get(id) ?? `Playfield ${id}`}</>
+}
+
+/** A character's (or world copy's) game mode. */
+export function ModeBadge({ mode }: { mode: string | null | undefined }) {
+  if (mode == null) return <span className="text-muted-foreground">—</span>
+  return <Badge variant={mode === "progression" ? "secondary" : "outline"}>{modeName(mode)}</Badge>
+}
+
+/** A number in a small card, for a row of stats. */
+export function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardDescription>{label}</CardDescription>
+        <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
+        {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
+      </CardHeader>
+    </Card>
+  )
 }
 
 export function Empty({ children }: { children: ReactNode }) {

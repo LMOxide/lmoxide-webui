@@ -1,30 +1,17 @@
-import type { ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { ConstructionIcon, UsersIcon } from "lucide-react"
 import { Link } from "react-router"
 
 import { api, unwrap } from "@/api/client"
-import { Empty, ErrorAlert, PageHeader, PlayfieldName } from "@/components/common"
+import { Empty, ErrorAlert, PageHeader, PlayfieldName, Stat } from "@/components/common"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
 import { formatSince, formatTime } from "@/lib/format"
 import { useConfig, useStatus } from "@/lib/queries"
-
-function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
-        {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
-      </CardHeader>
-    </Card>
-  )
-}
 
 export function StatusPage() {
   const { session } = useAuth()

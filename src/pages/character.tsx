@@ -5,7 +5,7 @@ import { useParams } from "react-router"
 import { toast } from "sonner"
 
 import { api, unwrap } from "@/api/client"
-import { Empty, ErrorAlert, Field, Fields, PageHeader, PlayfieldName } from "@/components/common"
+import { Empty, ErrorAlert, Field, Fields, ModeBadge, PageHeader, PlayfieldName } from "@/components/common"
 import { ConfirmDialog } from "@/components/moderation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
-import { formatRelative, formatTime, numberFormat } from "@/lib/format"
+import { formatRelative, formatTime, modeName, numberFormat } from "@/lib/format"
 import { useMinifigures, useTokens } from "@/lib/queries"
 
 type Earned = NonNullable<Awaited<ReturnType<typeof loadCharacter>>>["achievements"][number]
@@ -169,9 +169,12 @@ export function CharacterPage() {
       <PageHeader
         title={c?.name ?? "Character"}
         description={c && (
-          <span className="flex items-center gap-1">
-            <StarIcon className="size-3.5 fill-amber-400 text-amber-400" />
-            {numberFormat.format(c.stars)} stars
+          <span className="flex items-center gap-2">
+            <ModeBadge mode={c.mode} />
+            <span className="flex items-center gap-1">
+              <StarIcon className="size-3.5 fill-amber-400 text-amber-400" />
+              {numberFormat.format(c.stars)} stars
+            </span>
           </span>
         )}
       />
@@ -189,6 +192,7 @@ export function CharacterPage() {
                 <Field label="Character id">
                   <span className="font-mono">{c.id}</span>
                 </Field>
+                <Field label="Game mode">{modeName(c.mode)}</Field>
                 <Field label="Where">
                   <PlayfieldName id={c.playfield} />
                 </Field>

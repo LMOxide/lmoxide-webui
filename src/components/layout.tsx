@@ -25,6 +25,7 @@ const NAV: { to: string; label: string; scope?: ApiScope }[] = [
   { to: "/", label: "Status" },
   { to: "/players", label: "Players", scope: "read" },
   { to: "/accounts", label: "Accounts", scope: "read" },
+  { to: "/instances", label: "Instances", scope: "moderate" },
   { to: "/server", label: "Server", scope: "moderate" },
   { to: "/api-keys", label: "API keys", scope: "admin" },
   { to: "/audit", label: "Audit log", scope: "admin" },

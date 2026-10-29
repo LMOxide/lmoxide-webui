@@ -40,3 +40,23 @@ export function formatSince(unix: number | null | undefined): string {
 }
 
 export const numberFormat = new Intl.NumberFormat()
+
+/** The server's game modes in display order (`mode` on characters, players and instances). */
+export const MODES = ["progression", "maxed", "world-editor"] as const
+
+const MODE_NAMES: Record<string, string> = {
+  progression: "Progression",
+  maxed: "Maxxed",
+  "world-editor": "World Editor",
+}
+
+/** A game mode id as people read it: `maxed` → "Maxxed"; an unknown id as given. */
+export function modeName(mode: string | null | undefined): string {
+  return mode == null ? "—" : (MODE_NAMES[mode] ?? mode)
+}
+
+/** Sort key for a mode: known modes in `MODES` order, unknown ones after. */
+export function modeOrder(mode: string | null | undefined): number {
+  const i = MODES.indexOf(mode as (typeof MODES)[number])
+  return i < 0 ? MODES.length : i
+}

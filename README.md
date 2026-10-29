@@ -11,8 +11,8 @@ gives moderators and admins a console for running the server.
 | Who | What they get |
 |---|---|
 | Everyone | server status and who's online; registration (if the server allows it) |
-| Players | their account and character; password change |
-| Moderators | players online, kick; accounts and characters; bans; broadcasts |
+| Players | their account and characters (one per game mode they play); password change |
+| Moderators | players online (game mode, world copy), kick; accounts and characters; bans; broadcasts; running world copies and AI tick time |
 | Admins | creating, editing and deleting accounts, passwords; maintenance mode; API keys for bots; the audit log |
 
 <details>

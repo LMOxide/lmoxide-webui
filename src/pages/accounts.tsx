@@ -25,7 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { GmLevelSelect } from "@/components/gm-level-select"
 import { useAuth } from "@/lib/auth-context"
-import { formatRelative, formatTime } from "@/lib/format"
+import { formatRelative, formatTime, modeName, modeOrder } from "@/lib/format"
 import { PASSWORD_MAX, PASSWORD_MIN, USERNAME_HINT, USERNAME_PATTERN } from "@/lib/rules"
 
 const PAGE = 50
@@ -205,7 +205,7 @@ export function AccountsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Username</TableHead>
-                    <TableHead>Minifigure</TableHead>
+                    <TableHead>Characters</TableHead>
                     <TableHead>Last game login</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
@@ -222,7 +222,20 @@ export function AccountsPage() {
                           <BanBadge ban={a.ban} />
                         </span>
                       </TableCell>
-                      <TableCell>{a.characters.map((c) => c.name).join(", ") || <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell>
+                        {a.characters.length === 0 ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          a.characters
+                            .toSorted((x, y) => modeOrder(x.mode) - modeOrder(y.mode) || x.name.localeCompare(y.name))
+                            .map((c, i) => (
+                              <span key={c.id}>
+                                {i > 0 && ", "}
+                                {c.name} <span className="text-muted-foreground">({modeName(c.mode)})</span>
+                              </span>
+                            ))
+                        )}
+                      </TableCell>
                       <TableCell title={formatTime(a.last_login_at)}>
                         {a.last_login_at ? formatRelative(a.last_login_at) : <span className="text-muted-foreground">Never</span>}
                       </TableCell>

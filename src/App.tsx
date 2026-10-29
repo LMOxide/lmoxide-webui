@@ -9,6 +9,7 @@ import { ApiKeysPage } from "@/pages/api-keys"
 import { AuditPage } from "@/pages/audit"
 import { CharacterPage } from "@/pages/character"
 import { ContentPage } from "@/pages/content"
+import { InstancesPage } from "@/pages/instances"
 import { LoginPage } from "@/pages/login"
 import { MePage } from "@/pages/me"
 import { PlayersPage } from "@/pages/players"
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="accounts" element={<Require scope="read"><AccountsPage /></Require>} />
           <Route path="accounts/:id" element={<Require scope="read"><AccountPage /></Require>} />
           <Route path="characters/:id" element={<Require scope="read"><CharacterPage /></Require>} />
+          <Route path="instances" element={<Require scope="moderate"><InstancesPage /></Require>} />
           <Route path="server" element={<Require scope="moderate"><ServerPage /></Require>} />
           <Route path="api-keys" element={<Require scope="admin"><ApiKeysPage /></Require>} />
           <Route path="audit" element={<Require scope="admin"><AuditPage /></Require>} />
