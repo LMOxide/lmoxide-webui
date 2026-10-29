@@ -30,7 +30,7 @@ const ms = (n: number) => `${n.toFixed(n < 10 ? 2 : 1)} ms`
 export function InstancesPage() {
   const playfields = usePlayfields()
   const [mode, setMode] = useState<string>("all")
-  const [withPlayers, setWithPlayers] = useState(false)
+  const [withPlayers, setWithPlayers] = useState(true)
   const q = useQuery({
     queryKey: ["instances"],
     queryFn: () => unwrap(api.GET("/v1/instances")),
