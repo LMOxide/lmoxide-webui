@@ -361,7 +361,8 @@ export interface paths {
         /**
          * What the test commands accept: commands with usage, target kinds with their numbered targets,
          *     test scenarios, dialogues, loot kinds, spawnable enemies and smashables, and monster data
-         *     looks (the game server's devcmd.rs). For tools that offer them as choices. Scope: read.
+         *     looks (the game server's devcmd.rs). For tools that offer them as choices. Any account (and
+         *     read-scope keys).
          */
         get: operations["test_commands"];
         put?: never;
@@ -582,6 +583,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/command": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a test command as one's own character online, as if typed in chat: the game server
+         *     decides by the account's GM level which commands run (`GET /v1/catalog/test-commands`
+         *     `gm_level`; alpha testers have teleporting, scenarios, minifigures, dialogues, achievements,
+         *     animations and looks). Any account.
+         */
+        post: operations["my_command"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/discord": {
         parameters: {
             query?: never;
@@ -617,6 +640,26 @@ export interface paths {
          *     out in a `password_reset` session (from `/v1/auth/code`).
          */
         post: operations["change_own_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/players": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The logged-in account's characters online (the dev UI's debugger for players without the
+         *     read scope). Any account.
+         */
+        get: operations["my_players"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1370,6 +1413,12 @@ export interface components {
             /** Format: int32 */
             gm_level: number;
             /**
+             * Format: float
+             * @description The way the character faces, in degrees: 0 along +z, 90 along +x; `null` until it is in
+             *     play.
+             */
+            heading?: number | null;
+            /**
              * Format: int64
              * @description Unix time.
              */
@@ -1438,6 +1487,11 @@ export interface components {
              * @description GM level from which an account's login session has the admin scope.
              */
             admin_gm_level: number;
+            /**
+             * Format: int32
+             * @description GM level from which an account may use the world editor (`/v1/survey`, `/v1/editor`).
+             */
+            editor_gm_level: number;
             /**
              * Format: int32
              * @description GM level from which an account's login session has the moderate scope.
@@ -1545,6 +1599,11 @@ export interface components {
         };
         TestCommand: {
             about: string;
+            /**
+             * Format: int32
+             * @description The GM level the command needs (alpha testers have some of them).
+             */
+            gm_level: number;
             /** @description e.g. `!goto <kind> [n]` */
             usage: string;
         };
@@ -2657,6 +2716,37 @@ export interface operations {
             };
         };
     };
+    my_command: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommandRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandResult"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     link_own_account: {
         parameters: {
             query?: never;
@@ -2724,6 +2814,33 @@ export interface operations {
                 content?: never;
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    my_players: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Player"][];
+                };
+            };
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

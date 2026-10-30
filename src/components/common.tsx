@@ -31,7 +31,8 @@ export function ErrorAlert({ error, title = "Something went wrong" }: { error: u
   )
 }
 
-/** Moderator/admin badge for an account's GM level (thresholds from `/v1/config`); nothing for players. */
+/** The access level of an account's GM level (thresholds from `/v1/config`): alpha tester,
+ * contributor, moderator, admin; nothing for players. */
 export function GmBadge({ level }: { level: number }) {
   const gm = useGmLevels()
   if (level <= 0) return null
@@ -49,8 +50,9 @@ export function GmBadge({ level }: { level: number }) {
         Moderator{level > gm.moderator ? ` (GM ${level})` : ""}
       </Badge>
     )
-  // staff in the game, but no scope in the API
-  return <Badge variant="outline">GM {level}</Badge>
+  if (level >= gm.contributor)
+    return <Badge variant="outline">Contributor{level > gm.contributor ? ` (GM ${level})` : ""}</Badge>
+  return <Badge variant="outline">Alpha tester{level > 1 ? ` (GM ${level})` : ""}</Badge>
 }
 
 export function BanBadge({ ban }: { ban: Schemas["BanInfo"] | null | undefined }) {

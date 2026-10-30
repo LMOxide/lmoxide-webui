@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "@/lib/auth-context"
 import { formatTime } from "@/lib/format"
+import { useGmLevels } from "@/lib/queries"
 import { PASSWORD_MAX, PASSWORD_MIN, USERNAME_HINT, USERNAME_PATTERN } from "@/lib/rules"
 
 function EditAccount({ account }: { account: Account }) {
@@ -211,8 +212,9 @@ export function AccountPage() {
   })
   const a = q.data
   const admin = can("admin")
-  // moderators can't kick or ban staff; the server would answer 403
-  const canModerate = can("moderate") && a != null && (admin || a.gm_level === 0)
+  // moderators can't kick or ban staff (moderators and admins); the server would answer 403
+  const gm = useGmLevels()
+  const canModerate = can("moderate") && a != null && (admin || a.gm_level < gm.moderator)
 
   return (
     <>

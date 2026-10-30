@@ -59,8 +59,9 @@ export function useTokens() {
   })
 }
 
-/** GM levels from which sessions get the moderate and admin scopes (server defaults until loaded). */
+/** GM levels from which accounts are contributors (the world editor) and sessions get the moderate
+ * and admin scopes (server defaults until loaded); 1 to the contributors' are alpha testers. */
 export function useGmLevels() {
   const { data } = useConfig()
-  return { moderator: data?.moderator_gm_level ?? 1, admin: data?.admin_gm_level ?? 2 }
+  return { contributor: data?.editor_gm_level ?? 2, moderator: data?.moderator_gm_level ?? 3, admin: data?.admin_gm_level ?? 4 }
 }
