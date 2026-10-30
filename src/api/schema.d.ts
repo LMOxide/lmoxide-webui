@@ -720,8 +720,9 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Stop being friends with another account (their characters and yours stop being friends), or
-         *     withdraw a request either way. Any account.
+         * Stop being friends with another account (the friendships it made between their characters
+         *     and yours go; ones from before or made in game stay), or withdraw a request either way. Any
+         *     account.
          */
         delete: operations["remove_friend"];
         options?: never;
