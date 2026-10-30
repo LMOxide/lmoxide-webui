@@ -15,7 +15,8 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "@/lib/auth-context"
 import { formatTime } from "@/lib/format"
-import { PASSWORD_MAX, PASSWORD_MIN } from "@/lib/rules"
+import { useConfig, useGmLevels } from "@/lib/queries"
+import { PASSWORD_MAX, PASSWORD_MIN, USERNAME_HINT, USERNAME_PATTERN } from "@/lib/rules"
 
 function ChangePassword() {
   const { clear, session } = useAuth()
@@ -101,6 +102,105 @@ function ChangePassword() {
         <CardFooter className="mt-6">
           <Button type="submit" disabled={m.isPending || mismatch}>
             {m.isPending ? "Changing…" : "Change password"}
+          </Button>
+        </CardFooter>
+      </form>
+    </Card>
+  )
+}
+
+/** The account's own login name, once every `username_cooldown_days` (admins any time). */
+function ChangeUsername({ account }: { account: Account }) {
+  const { session, setAccount } = useAuth()
+  const queryClient = useQueryClient()
+  const days = useConfig().data?.username_cooldown_days ?? 7
+  const gm = useGmLevels()
+  // no password to check: a Discord sign-in code's session, or an account without one
+  const needsPassword = account.has_password && session?.password_reset !== true
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  // (the time the page opened: a wait of days doesn't need to tick)
+  const [now] = useState(() => Date.now() / 1000)
+  const next = account.gm_level >= gm.admin || account.username_changed_at == null ? null : account.username_changed_at + days * 86400
+  const waiting = next != null && next > now
+  const m = useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.POST("/v1/me/username", {
+          body: { new_username: username.trim(), current_password: needsPassword ? password : null },
+        }),
+      ),
+    onSuccess: (a) => {
+      queryClient.setQueryData(["me"], a)
+      setAccount(a)
+      setUsername("")
+      setPassword("")
+      toast.success(`Your username is ${a.username} now. Log in to the game with it.`)
+    },
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Change username</CardTitle>
+        <CardDescription>
+          The name you log in with (your characters keep theirs). Once every {days} day{days === 1 ? "" : "s"}; saved logins
+          such as the patcher's need the new one.
+        </CardDescription>
+      </CardHeader>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          m.mutate()
+        }}
+      >
+        <CardContent className="space-y-4">
+          {waiting && (
+            <Alert>
+              <AlertDescription>You changed it recently. You can change it again from {formatTime(next)}.</AlertDescription>
+            </Alert>
+          )}
+          {m.error && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                {m.error instanceof ApiError && m.error.code === "bad_credentials"
+                  ? "The current password is wrong."
+                  : m.error instanceof ApiError && m.error.status === 409
+                    ? "That username is taken."
+                    : errorMessage(m.error)}
+              </AlertDescription>
+            </Alert>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="new-username">New username</Label>
+            <Input
+              id="new-username"
+              required
+              autoComplete="username"
+              pattern={USERNAME_PATTERN}
+              title={USERNAME_HINT}
+              disabled={waiting}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </div>
+          {needsPassword && (
+            <div className="space-y-2">
+              <Label htmlFor="username-password">Current password</Label>
+              <PasswordInput
+                id="username-password"
+                autoComplete="current-password"
+                required
+                disabled={waiting}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+          )}
+        </CardContent>
+        <CardFooter className="mt-6">
+          <Button type="submit" disabled={m.isPending || waiting || username.trim() === "" || username.trim() === account.username}>
+            {m.isPending ? "Changing…" : "Change username"}
           </Button>
         </CardFooter>
       </form>
@@ -229,6 +329,7 @@ export function MePage() {
           </Card>
         </div>
         <div className="space-y-6">
+          {a ? <ChangeUsername account={a} /> : <Skeleton className="h-40" />}
           <ChangePassword />
           {a ? <DiscordLink account={a} /> : <Skeleton className="h-40" />}
         </div>

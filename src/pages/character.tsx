@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { StarIcon, Trash2Icon } from "lucide-react"
+import { PencilIcon, StarIcon, Trash2Icon } from "lucide-react"
 import { useState } from "react"
 import { useParams } from "react-router"
 import { toast } from "sonner"
@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { api, unwrap } from "@/api/client"
 import { Empty, ErrorAlert, Field, Fields, ModeBadge, PageHeader, PlayfieldName } from "@/components/common"
 import { ConfirmDialog } from "@/components/moderation"
+import { RenameCharacterDialog } from "@/components/rename-character"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -145,6 +146,7 @@ export function CharacterPage() {
   })
   const figs = useMinifigures().data
   const tokenInfo = useTokens().data
+  const admin = useAuth().can("admin")
   const c = q.data
   const tokens = c
     ? Object.entries(c.tokens)
@@ -167,7 +169,7 @@ export function CharacterPage() {
   return (
     <>
       <PageHeader
-        title={c?.name ?? "Character"}
+        title={c ? c.name || "On the creation screen" : "Character"}
         description={c && (
           <span className="flex items-center gap-2">
             <ModeBadge mode={c.mode} />
@@ -177,6 +179,21 @@ export function CharacterPage() {
             </span>
           </span>
         )}
+        actions={
+          c?.name &&
+          admin && (
+            <RenameCharacterDialog
+              id={c.id}
+              name={c.name}
+              trigger={
+                <Button variant="outline">
+                  <PencilIcon data-icon="inline-start" />
+                  Rename
+                </Button>
+              }
+            />
+          )
+        }
       />
       {q.error && <ErrorAlert error={q.error} title="Can't load the character" />}
       {q.isPending && <Skeleton className="h-40" />}

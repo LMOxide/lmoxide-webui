@@ -345,7 +345,7 @@ export function AccountPage() {
                 <CardTitle>Characters</CardTitle>
               </CardHeader>
               <CardContent>
-                <CharactersTable characters={a.characters} link />
+                <CharactersTable characters={a.characters} link rename={admin} />
               </CardContent>
             </Card>
           </div>

@@ -373,6 +373,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/characters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Characters by name (their in-game names), with the account each belongs to: who plays a
+         *     character, for tools such as a Discord bot. Scope: read.
+         */
+        get: operations["search_characters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/characters/{id}": {
         parameters: {
             query?: never;
@@ -387,7 +407,12 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Rename a character (its name must not be another account's character's). An online one is
+         *     renamed through its game server and sent again where it stands, so everyone sees the new
+         *     name. Scope: admin.
+         */
+        patch: operations["rename_character"];
         trace?: never;
     };
     "/v1/characters/{id}/achievements/remove": {
@@ -666,6 +691,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/username": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the logged-in account's username (its login name; sessions stay). Once every
+         *     `username_cooldown_days` (`/v1/config`), except for admins. `current_password` may be left
+         *     out for an account without a password or in a `password_reset` session.
+         */
+        post: operations["change_own_username"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/minifigures": {
         parameters: {
             query?: never;
@@ -818,6 +864,7 @@ export interface components {
     schemas: {
         Account: {
             ban?: components["schemas"]["BanInfo"] | null;
+            /** @description Its characters. `name` is empty for one still on the creation screen. */
             characters: components["schemas"]["CharacterSummary"][];
             /**
              * Format: int64
@@ -836,6 +883,12 @@ export interface components {
             /** @description Only shown to admins. */
             last_login_ip?: string | null;
             username: string;
+            /**
+             * Format: int64
+             * @description Unix time the account last changed its own username (`POST /v1/me/username`; the
+             *     cooldown, `username_cooldown_days` in `/v1/config`, counts from it); `null`: never.
+             */
+            username_changed_at?: number | null;
         };
         AccountChanges: {
             /** Format: int32 */
@@ -956,6 +1009,11 @@ export interface components {
             current_password?: string | null;
             new_password: string;
         };
+        ChangeUsername: {
+            /** @description Required if the account has a password, except in a `password_reset` session. */
+            current_password?: string | null;
+            new_username: string;
+        };
         Character: {
             /** @description Earned achievements. */
             achievements: components["schemas"]["EarnedAchievement"][];
@@ -1015,6 +1073,25 @@ export interface components {
              * @description Player XP.
              */
             xp: number;
+        };
+        /**
+         * @description A character's new name: 1 to 3 words of up to 32 characters (created characters have
+         *     "first nick last"; others see the middle word above it).
+         */
+        CharacterChanges: {
+            name: string;
+        };
+        /** @description A character found by name, with its account. */
+        CharacterMatch: {
+            /** Format: int32 */
+            account_id: number;
+            /** Format: int32 */
+            id: number;
+            /** @description The game mode the character belongs to: `progression`, `maxed` or `world-editor`. */
+            mode: string;
+            name: string;
+            /** @description The account's login name. */
+            username: string;
         };
         CharacterSummary: {
             /** Format: int32 */
@@ -1503,6 +1580,12 @@ export interface components {
             registration: components["schemas"]["Registration"];
             /** @description Whether `POST /v1/auth/register` accepts new accounts (`registration` is `open`). */
             registration_open: boolean;
+            /**
+             * Format: int32
+             * @description Days an account waits between changes of its own username (`POST /v1/me/username`);
+             *     admins (`admin_gm_level`) don't wait.
+             */
+            username_cooldown_days: number;
         };
         Session: {
             account: components["schemas"]["Account"];
@@ -2343,6 +2426,30 @@ export interface operations {
             };
         };
     };
+    search_characters: {
+        parameters: {
+            query: {
+                /** @description Only characters whose name contains this (case-insensitive). */
+                search: string;
+                /** @description At most 100 (default 25). */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterMatch"][];
+                };
+            };
+        };
+    };
     get_character: {
         parameters: {
             query?: never;
@@ -2363,6 +2470,63 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rename_character: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CharacterChanges"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Character"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2841,6 +3005,53 @@ export interface operations {
                 };
             };
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_own_username: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeUsername"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
