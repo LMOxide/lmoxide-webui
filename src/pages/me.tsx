@@ -1,15 +1,16 @@
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router"
+import { useNavigate, useSearchParams } from "react-router"
 import { toast } from "sonner"
 
-import { api, ApiError, errorMessage, unwrap } from "@/api/client"
+import { api, ApiError, errorMessage, unwrap, type Account } from "@/api/client"
 import { BanBadge, ErrorAlert, Field, Fields, GmBadge, PageHeader } from "@/components/common"
 import { CharactersTable } from "@/components/characters-table"
 import { PasswordInput } from "@/components/password-input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "@/lib/auth-context"
@@ -17,7 +18,9 @@ import { formatTime } from "@/lib/format"
 import { PASSWORD_MAX, PASSWORD_MIN } from "@/lib/rules"
 
 function ChangePassword() {
-  const { clear } = useAuth()
+  const { clear, session } = useAuth()
+  // signed in with a code from the Discord bot: no current password needed
+  const reset = session?.password_reset === true
   const navigate = useNavigate()
   const [current, setCurrent] = useState("")
   const [next, setNext] = useState("")
@@ -25,7 +28,11 @@ function ChangePassword() {
   const mismatch = confirm.length > 0 && confirm !== next
   const m = useMutation({
     mutationFn: () =>
-      unwrap(api.POST("/v1/me/password", { body: { current_password: current, new_password: next } })),
+      unwrap(
+        api.POST("/v1/me/password", {
+          body: reset ? { new_password: next } : { current_password: current, new_password: next },
+        }),
+      ),
     onSuccess: () => {
       // the server ended every session of this account, this one too
       clear()
@@ -35,10 +42,14 @@ function ChangePassword() {
   })
 
   return (
-    <Card>
+    <Card className={reset ? "border-primary" : undefined}>
       <CardHeader>
-        <CardTitle>Change password</CardTitle>
-        <CardDescription>This logs you out everywhere, including the game.</CardDescription>
+        <CardTitle>{reset ? "Choose a new password" : "Change password"}</CardTitle>
+        <CardDescription>
+          {reset
+            ? "You signed in with a code from Discord. This sets your password and logs you out everywhere."
+            : "This logs you out everywhere, including the game."}
+        </CardDescription>
       </CardHeader>
       <form
         onSubmit={(e) => {
@@ -56,16 +67,18 @@ function ChangePassword() {
               </AlertDescription>
             </Alert>
           )}
-          <div className="space-y-2">
-            <Label htmlFor="current">Current password</Label>
-            <PasswordInput
-              id="current"
-              autoComplete="current-password"
-              required
-              value={current}
-              onChange={(e) => setCurrent(e.target.value)}
-            />
-          </div>
+          {!reset && (
+            <div className="space-y-2">
+              <Label htmlFor="current">Current password</Label>
+              <PasswordInput
+                id="current"
+                autoComplete="current-password"
+                required
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="new">New password</Label>
             <PasswordInput id="new" autoComplete="new-password" minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX} required value={next} onChange={(e) => setNext(e.target.value)} />
@@ -88,6 +101,83 @@ function ChangePassword() {
         <CardFooter className="mt-6">
           <Button type="submit" disabled={m.isPending || mismatch}>
             {m.isPending ? "Changing…" : "Change password"}
+          </Button>
+        </CardFooter>
+      </form>
+    </Card>
+  )
+}
+
+/** The Discord account this one is linked to, or a box for the bot's `/link` code (the bot's DM
+ * links here with `?link_code=`). */
+function DiscordLink({ account }: { account: Account }) {
+  const { setAccount } = useAuth()
+  const queryClient = useQueryClient()
+  const [params, setParams] = useSearchParams()
+  const [code, setCode] = useState(params.get("link_code") ?? "")
+  const m = useMutation({
+    mutationFn: () => unwrap(api.POST("/v1/me/discord", { body: { code: code.trim() } })),
+    onSuccess: (a) => {
+      queryClient.setQueryData(["me"], a)
+      setAccount(a)
+      setParams({}, { replace: true })
+      toast.success("Linked to your Discord account")
+    },
+  })
+
+  if (account.discord_id)
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Discord</CardTitle>
+          <CardDescription>
+            Linked to Discord account <span className="font-mono">{account.discord_id}</span>. Your roles in the Discord
+            server set your GM level, and <code>/reset-password</code> there sends you a sign-in code.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Link Discord</CardTitle>
+        <CardDescription>
+          Run <code>/link</code> in the Discord server; the bot sends you a code by DM. Enter it here.
+        </CardDescription>
+      </CardHeader>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          m.mutate()
+        }}
+      >
+        <CardContent className="space-y-4">
+          {m.error && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                {m.error instanceof ApiError && m.error.code === "bad_code"
+                  ? "That code is wrong, used or expired. Run /link again for a new one."
+                  : errorMessage(m.error)}
+              </AlertDescription>
+            </Alert>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="link-code">Code</Label>
+            <Input
+              id="link-code"
+              autoComplete="one-time-code"
+              required
+              placeholder="XXXX-XXXX"
+              className="font-mono uppercase"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+          </div>
+        </CardContent>
+        <CardFooter className="mt-6">
+          <Button type="submit" disabled={m.isPending}>
+            {m.isPending ? "Linking…" : "Link"}
           </Button>
         </CardFooter>
       </form>
@@ -138,7 +228,10 @@ export function MePage() {
             <CardContent>{a ? <CharactersTable characters={a.characters} link={can("read")} /> : <Skeleton className="h-16" />}</CardContent>
           </Card>
         </div>
-        <ChangePassword />
+        <div className="space-y-6">
+          <ChangePassword />
+          {a ? <DiscordLink account={a} /> : <Skeleton className="h-40" />}
+        </div>
       </div>
     </>
   )

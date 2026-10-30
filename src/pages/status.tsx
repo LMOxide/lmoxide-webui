@@ -33,7 +33,7 @@ export function StatusPage() {
         description="LEGO Minifigures Online, served by LMOxide."
         actions={
           !session &&
-          config.data?.registration_open && (
+          (config.data?.registration === "open" || config.data?.registration === "discord") && (
             <Button asChild variant="outline">
               <Link to="/register">Create an account</Link>
             </Button>

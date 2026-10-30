@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/lib/auth-context"
+import { DISCORD_INVITE } from "@/lib/discord"
 import { useConfig } from "@/lib/queries"
 import { PASSWORD_MAX, PASSWORD_MIN, USERNAME_HINT, USERNAME_PATTERN } from "@/lib/rules"
 
@@ -34,7 +35,7 @@ export function RegisterPage() {
     },
   })
   const closed =
-    config.data?.registration_open === false ||
+    config.data?.registration === "closed" ||
     (m.error instanceof ApiError && m.error.code === "registration_closed")
 
   if (session)
@@ -49,6 +50,42 @@ export function RegisterPage() {
             </Link>
           </AlertDescription>
         </Alert>
+      </div>
+    )
+
+  if (config.data?.registration === "discord")
+    return (
+      <div className="mx-auto mt-8 max-w-sm">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Create an account</CardTitle>
+            <CardDescription>Accounts on this server are made in its Discord server.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p>
+              {DISCORD_INVITE ? "Join the Discord server" : "In the Discord server"}, run <code>/register</code> and fill in
+              a username and password. You log in to the game and here with them.
+            </p>
+            <p className="text-muted-foreground">
+              Have an account from before? Log in, then link it with <code>/link</code>.
+            </p>
+          </CardContent>
+          <CardFooter className="mt-2 flex-col gap-3">
+            {DISCORD_INVITE && (
+              <Button asChild className="w-full">
+                <a href={DISCORD_INVITE} target="_blank" rel="noreferrer">
+                  Join the Discord server
+                </a>
+              </Button>
+            )}
+            <p className="text-sm text-muted-foreground">
+              Have one?{" "}
+              <Link to="/login" className="text-foreground underline underline-offset-4">
+                Log in
+              </Link>
+            </p>
+          </CardFooter>
+        </Card>
       </div>
     )
 
