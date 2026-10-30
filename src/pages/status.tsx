@@ -10,13 +10,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
-import { formatSince, formatTime } from "@/lib/format"
+import { formatRelative, formatSince, formatTime } from "@/lib/format"
 import { useConfig, useStatus } from "@/lib/queries"
 
 export function StatusPage() {
   const { session } = useAuth()
   const status = useStatus()
   const config = useConfig()
+  // what the game server was built from (servers before /v1/version: none)
+  const version = useQuery({ queryKey: ["version"], queryFn: () => unwrap(api.GET("/v1/version")), staleTime: 5 * 60_000, retry: false })
+  const build = version.data?.game_server
   const online = useQuery({
     queryKey: ["online"],
     queryFn: () => unwrap(api.GET("/v1/online")),
@@ -63,7 +66,18 @@ export function StatusPage() {
             value={s ? formatSince(s.started_at) : <Skeleton className="h-8 w-20" />}
             hint={s?.started_at ? `since ${formatTime(s.started_at)}` : undefined}
           />
-          <Stat label="Version" value={s ? (s.version ?? "—") : <Skeleton className="h-8 w-16" />} />
+          <Stat
+            label="Version"
+            value={s ? (s.version ?? "—") : <Skeleton className="h-8 w-16" />}
+            hint={
+              build?.commit ? (
+                <span title={`commit ${build.commit}${build.built ? `, built ${formatTime(build.built)}` : ""}`}>
+                  <span className="font-mono">{build.commit.slice(0, 7)}</span>
+                  {build.commit_time ? ` · ${formatRelative(build.commit_time)}` : ""}
+                </span>
+              ) : undefined
+            }
+          />
         </div>
       )}
 

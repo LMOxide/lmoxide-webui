@@ -11,6 +11,7 @@ import { CharacterPage } from "@/pages/character"
 import { ContentPage } from "@/pages/content"
 import { InstancesPage } from "@/pages/instances"
 import { LoginPage } from "@/pages/login"
+import { FriendsPage } from "@/pages/friends"
 import { MePage } from "@/pages/me"
 import { PlayersPage } from "@/pages/players"
 import { RegisterPage } from "@/pages/register"
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="login" element={<LoginPage />} />
           <Route path="register" element={<RegisterPage />} />
           <Route path="me" element={<Require><MePage /></Require>} />
+          <Route path="friends" element={<Require><FriendsPage /></Require>} />
           <Route path="players" element={<Require scope="read"><PlayersPage /></Require>} />
           <Route path="accounts" element={<Require scope="read"><AccountsPage /></Require>} />
           <Route path="accounts/:id" element={<Require scope="read"><AccountPage /></Require>} />

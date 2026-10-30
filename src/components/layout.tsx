@@ -1,4 +1,4 @@
-import { LogInIcon, LogOutIcon, MenuIcon, MonitorIcon, MoonIcon, SunIcon, UserIcon } from "lucide-react"
+import { LogInIcon, LogOutIcon, MenuIcon, MonitorIcon, MoonIcon, SunIcon, UserIcon, UsersIcon } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useState } from "react"
 import { Link, NavLink, Outlet, useNavigate } from "react-router"
@@ -21,8 +21,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { useAuth } from "@/lib/auth-context"
 import { cn } from "@/lib/utils"
 
-const NAV: { to: string; label: string; scope?: ApiScope }[] = [
+/** `signedIn`: any account (no scope needed). */
+const NAV: { to: string; label: string; scope?: ApiScope; signedIn?: boolean }[] = [
   { to: "/", label: "Status" },
+  { to: "/friends", label: "Friends", signedIn: true },
   { to: "/players", label: "Players", scope: "read" },
   { to: "/accounts", label: "Accounts", scope: "read" },
   { to: "/instances", label: "Instances", scope: "moderate" },
@@ -33,10 +35,10 @@ const NAV: { to: string; label: string; scope?: ApiScope }[] = [
 ]
 
 function NavLinks({ vertical, onNavigate }: { vertical?: boolean; onNavigate?: () => void }) {
-  const { can } = useAuth()
+  const { account, can } = useAuth()
   return (
     <nav className={cn("flex gap-1", vertical && "flex-col")}>
-      {NAV.filter((n) => !n.scope || can(n.scope)).map((n) => (
+      {NAV.filter((n) => (!n.scope || can(n.scope)) && (!n.signedIn || account)).map((n) => (
         <NavLink
           key={n.to}
           to={n.to}
@@ -112,6 +114,11 @@ function UserMenu() {
         <DropdownMenuItem asChild>
           <Link to="/me">
             <UserIcon /> My account
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/friends">
+            <UsersIcon /> Friends
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem

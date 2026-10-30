@@ -495,6 +495,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/discord/friend-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Requests waiting for a target linked to Discord that the bot hasn't sent by DM yet, oldest
+         *     first. The bot polls this, DMs each target and marks it sent. Scope: discord.
+         */
+        get: operations["friend_requests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/discord/friend-requests/{requester_id}/{target_id}/notified": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The bot sent the target this request (it isn't listed again). Scope: discord. */
+        post: operations["friend_request_notified"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/discord/links": {
         parameters: {
             query?: never;
@@ -645,6 +682,87 @@ export interface paths {
          *     linked already.
          */
         post: operations["link_own_account"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's account friends and requests either way, by username. Any account. */
+        get: operations["my_friends"];
+        put?: never;
+        /**
+         * Ask another account to be friends (all your characters with all theirs). If they had asked
+         *     you already, you are friends at once (`state: friends`). Any account.
+         */
+        post: operations["request_friend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/friends/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Stop being friends with another account (their characters and yours stop being friends), or
+         *     withdraw a request either way. Any account.
+         */
+        delete: operations["remove_friend"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/friends/{account_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept another account's request: every character of each becomes friends with every
+         *     character of the other. Any account (the request's target).
+         */
+        post: operations["accept_friend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/friends/{account_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn down another account's request (it is deleted; they may ask again). Any account (the
+         *     request's target).
+         */
+        post: operations["reject_friend"];
         delete?: never;
         options?: never;
         head?: never;
@@ -858,6 +976,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the API and the game server were built from: version, git commit and when.
+         * @description Public unless the API runs with `--private-status`.
+         */
+        get: operations["version"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -895,6 +1033,28 @@ export interface components {
             gm_level?: number | null;
             username?: string | null;
         };
+        /** @description Another account as the caller sees it. */
+        AccountFriend: {
+            /**
+             * Format: int64
+             * @description Unix time it was accepted.
+             */
+            accepted_at?: number | null;
+            /** Format: int32 */
+            account_id: number;
+            /**
+             * Format: int64
+             * @description Unix time it was asked.
+             */
+            requested_at: number;
+            state: components["schemas"]["AccountFriendState"];
+            username: string;
+        };
+        /**
+         * @description How the caller stands with another account.
+         * @enum {string}
+         */
+        AccountFriendState: "friends" | "incoming" | "outgoing";
         /** @description RDB 1050003: an EMotion FX anim graph (blend setup). */
         AnimGraph: {
             /** @description Its parameters: the animation attributes it reacts to. */
@@ -1003,6 +1163,23 @@ export interface components {
         BroadcastRequest: {
             /** @description 1-500 characters, shown in every player's chat from "Server". */
             message: string;
+        };
+        /** @description What a program was built from. */
+        BuildInfo: {
+            /**
+             * Format: int64
+             * @description Unix time it was built.
+             */
+            built?: number | null;
+            /** @description The full git commit hash; `null` when built without git (and no `LMOXIDE_GIT_COMMIT`). */
+            commit?: string | null;
+            /**
+             * Format: int64
+             * @description Unix time of that commit.
+             */
+            commit_time?: number | null;
+            /** @description The workspace version (`0.1.0`). */
+            version: string;
         };
         ChangePassword: {
             /** @description Required, except in a `password_reset` session. */
@@ -1271,6 +1448,23 @@ export interface components {
             /** @description Stable machine-readable code, e.g. `unauthorized`, `forbidden`, `not_found`. */
             code: string;
             message: string;
+        };
+        FriendRequest: {
+            /** @description The other account's username. */
+            username: string;
+        };
+        /** @description A request waiting for a target linked to Discord that the bot hasn't sent yet. */
+        FriendRequestNotice: {
+            /** @description The target's Discord user id (a snowflake, as a string). */
+            discord_id: string;
+            /** Format: int64 */
+            requested_at: number;
+            /** Format: int32 */
+            requester_id: number;
+            requester_username: string;
+            /** Format: int32 */
+            target_id: number;
+            target_username: string;
         };
         /** @description A running copy of a world. */
         Instance: {
@@ -1763,6 +1957,16 @@ export interface components {
             name?: string | null;
             /** @description `item` or `spell` */
             rdb: string;
+        };
+        Versions: {
+            /** @description This API. */
+            api: components["schemas"]["BuildInfo"];
+            game_server?: components["schemas"]["BuildInfo"] | null;
+            /**
+             * Format: int64
+             * @description Unix time the game server started.
+             */
+            game_server_started_at?: number | null;
         };
         VisitCount: {
             /** Format: int64 */
@@ -2666,6 +2870,54 @@ export interface operations {
             };
         };
     };
+    friend_requests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendRequestNotice"][];
+                };
+            };
+        };
+    };
+    friend_request_notified: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requester_id: number;
+                target_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such request waiting */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     links: {
         parameters: {
             query?: never;
@@ -2958,6 +3210,167 @@ export interface operations {
             };
         };
     };
+    my_friends: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountFriend"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    request_friend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FriendRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountFriend"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Already friends or already asked */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Yourself */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_friend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accept_friend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountFriend"];
+                };
+            };
+            /** @description No request from them */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reject_friend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No request from them */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     change_own_password: {
         parameters: {
             query?: never;
@@ -3237,6 +3650,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Token"][];
+                };
+            };
+        };
+    };
+    version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Versions"];
                 };
             };
         };

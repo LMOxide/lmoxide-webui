@@ -11,7 +11,7 @@ gives moderators and admins a console for running the server.
 | Who | What they get |
 |---|---|
 | Everyone | server status and who's online; registration (if the server allows it) |
-| Players | their account and characters (one per game mode they play); password change; linking Discord with a code from the bot, and signing in with a code from it to reset a forgotten password |
+| Players | their account and characters (one per game mode they play); password change; linking Discord with a code from the bot, and signing in with a code from it to reset a forgotten password; **Friends**: friend accounts (ask by username, accept or reject; all your characters become friends with all of theirs in game) |
 | Moderators | players online (game mode, world copy), kick; accounts and characters; bans; broadcasts; running world copies and AI tick time |
 | Admins | creating, editing and deleting accounts, passwords; maintenance mode; API keys for bots; the audit log |
 
@@ -60,6 +60,10 @@ Log in as `admin`, `moderator`, `player` or `banned`, each with the password `<n
 
 To deploy: `pnpm build` and serve `dist/` behind the same reverse proxy as the API. See
 [Deploying](docs/DEPLOYING.md).
+
+Builds write `version.json` next to `index.html` (version, git commit and its time, build time;
+the Discord bot's `/version` reads it). Docker builds have no `.git`: pass the commit as the build
+arguments `GIT_COMMIT` and `GIT_COMMIT_TIME` (the release workflow does).
 
 ## Install without Node
 
