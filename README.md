@@ -61,6 +61,18 @@ Log in as `admin`, `moderator`, `player` or `banned`, each with the password `<n
 To deploy: `pnpm build` and serve `dist/` behind the same reverse proxy as the API. See
 [Deploying](docs/DEPLOYING.md).
 
+## Install without Node
+
+Every version tag publishes the built UI. Nothing to build:
+
+| | |
+|---|---|
+| Image | `ghcr.io/lmoxide/lmoxide-webui` (`latest` or a version): the files on port 8080, unknown paths fall back to `index.html` |
+| Files | `lmoxide-webui-<version>.tar.gz` / `.zip` on the [Releases](https://github.com/LMOxide/lmoxide-webui/releases) page: serve them as in [Deploying](docs/DEPLOYING.md) |
+
+Both call the API at `/api` on their own origin. LMOxide's `docker-compose.yml` runs the image
+behind Caddy with that layout ([HOSTING.md](https://github.com/LMOxide/lmoxide/blob/main/docs/HOSTING.md)).
+
 ## Documentation
 
 - [Development](docs/DEVELOPMENT.md): scripts, code layout, the dev proxy, regenerating the API types

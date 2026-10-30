@@ -1,0 +1,16 @@
+# The web UI's own file server inside its image (not the TLS proxy in front of it).
+# Unknown paths fall back to index.html (the UI's routes); hashed assets are cached for good.
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	root * /srv
+	encode zstd gzip
+	@html not path /assets/*
+	header @html Cache-Control "no-cache"
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+	try_files {path} /index.html
+	file_server
+}

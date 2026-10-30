@@ -9,6 +9,12 @@ pnpm build                   # → dist/
 
 Serve `dist/` as a single-page app: unknown paths fall back to `index.html`.
 
+Or take the built files from a release, or the image `ghcr.io/lmoxide/lmoxide-webui` (Caddy
+serving them on port 8080 with the fallback). LMOxide's `docker-compose.yml` uses the image
+([HOSTING.md](https://github.com/LMOxide/lmoxide/blob/main/docs/HOSTING.md)). To build the image
+yourself: `docker build -t lmoxide-webui .` (`--build-arg VITE_API_URL=...` and
+`--build-arg VITE_DISCORD_INVITE=...` as below).
+
 ## Same origin (recommended)
 
 By default the UI calls the API at `/api` on its own origin. Put both behind one reverse proxy:
