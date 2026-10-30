@@ -71,6 +71,10 @@ VITE_API_URL=https://api.example.org pnpm build
 LMOXIDE_API_CORS_ORIGINS=https://lmo.example.org lmoxide-api ...
 ```
 
+When the API runs with `--registration discord`, the register page sends people to the Discord
+server's `/register`. Build with `VITE_DISCORD_INVITE=https://discord.gg/...` to add a button
+that opens an invite to it.
+
 ## Under a sub-path
 
 To serve the UI at e.g. `/admin/`, build with `pnpm build --base /admin/` and point the proxy's

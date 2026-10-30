@@ -144,6 +144,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in with a `login` code the Discord bot sent: a session for the linked account with
+         *     `password_reset`, in which `/v1/me/password` takes a new password without the current one.
+         *     401 `bad_code` for a wrong or expired code, or a banned account (counts as a failed login).
+         */
+        post: operations["code_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/login": {
         parameters: {
             query?: never;
@@ -187,7 +208,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a game account (only with `--open-registration`). */
+        /** Create a game account (only when `registration` is `open`). */
         post: operations["register"];
         delete?: never;
         options?: never;
@@ -407,6 +428,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/discord/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a game account linked to a Discord account, with a key that acts as it. Not while
+         *     registration is `closed`. Scope: discord.
+         */
+        post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/discord/codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A one-time code (`XXXX-XXXX`, 10 minutes, works once) for the bot to send to that Discord
+         *     user in a DM; it replaces their last one for the same purpose. `link`: the Discord account
+         *     must not be linked yet (409); `login`: it must be (404). Scope: discord.
+         */
+        post: operations["create_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/discord/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every game account linked to a Discord account. Scope: discord. */
+        get: operations["links"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/discord/links/{discord_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The game account linked to a Discord account. Scope: discord. */
+        get: operations["get_link"];
+        put?: never;
+        post?: never;
+        /**
+         * Unlink a Discord account; the keys that act as its game account are revoked, the account
+         *     stays. Scope: discord.
+         */
+        delete: operations["unlink"];
+        options?: never;
+        head?: never;
+        /** Change the GM level of a linked account (from its next login). Scope: discord. */
+        patch: operations["update_link"];
+        trace?: never;
+    };
+    "/v1/discord/links/{discord_id}/api-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A new key that acts as the linked account (named `discord-bot`; it replaces the account's
+         *     earlier one). Its scope follows the account's GM level. Scope: discord.
+         */
+        post: operations["link_api_key"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/instances": {
         parameters: {
             query?: never;
@@ -461,6 +582,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/discord": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link the logged-in account to the Discord account that got this `link` code from the bot.
+         *     401 `bad_code` for a wrong or expired code (counts as a failed login); 409 if either is
+         *     linked already.
+         */
+        post: operations["link_own_account"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/password": {
         parameters: {
             query?: never;
@@ -470,7 +612,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Change the logged-in account's password (ends its sessions). */
+        /**
+         * Change the logged-in account's password (ends its sessions). `current_password` may be left
+         *     out in a `password_reset` session (from `/v1/auth/code`).
+         */
         post: operations["change_own_password"];
         delete?: never;
         options?: never;
@@ -636,6 +781,8 @@ export interface components {
              * @description Unix time.
              */
             created_at: number;
+            /** @description The linked Discord user id (a snowflake, as a string); `null`: not linked. */
+            discord_id?: string | null;
             /** Format: int32 */
             gm_level: number;
             has_password: boolean;
@@ -685,6 +832,12 @@ export interface components {
             motion_sets: components["schemas"]["MotionSet"][];
         };
         ApiKey: {
+            /**
+             * Format: int32
+             * @description Set: the key acts as this account, and its scope follows the account's GM level as a
+             *     login session's does (`scope` is then `read` and unused).
+             */
+            account_id?: number | null;
             /** Format: int64 */
             created_at: number;
             /** Format: int64 */
@@ -699,7 +852,7 @@ export interface components {
          * @description What a credential may do; each includes the ones before it.
          * @enum {string}
          */
-        ApiScope: "read" | "moderate" | "admin";
+        ApiScope: "read" | "moderate" | "discord" | "admin";
         AuditEntry: {
             action: string;
             actor: string;
@@ -756,7 +909,8 @@ export interface components {
             message: string;
         };
         ChangePassword: {
-            current_password: string;
+            /** @description Required, except in a `password_reset` session. */
+            current_password?: string | null;
             new_password: string;
         };
         Character: {
@@ -835,6 +989,17 @@ export interface components {
             /** Format: int64 */
             stars: number;
         };
+        CodeLogin: {
+            /** @description As sent by the bot; any case, the dash optional. */
+            code: string;
+            /** @description As in the login: a long session or a short one. */
+            remember?: boolean;
+        };
+        /**
+         * @description What a one-time code is for.
+         * @enum {string}
+         */
+        CodePurpose: "link" | "login";
         CommandRequest: {
             /** @description A test command as typed in chat, e.g. `!fx 163540`, `!skin 2212`, `!state 29`. */
             command: string;
@@ -873,6 +1038,43 @@ export interface components {
             kind: string;
             /** Format: int64 */
             last_at: number;
+        };
+        DiscordCode: {
+            /** @description `XXXX-XXXX`; works once. */
+            code: string;
+            /**
+             * Format: int64
+             * @description Unix time.
+             */
+            expires_at: number;
+        };
+        /** @description A game account linked to a Discord account. */
+        DiscordLink: {
+            /** Format: int32 */
+            account_id: number;
+            /** @description Whether a ban is in force. */
+            banned: boolean;
+            /** @description The Discord user id (a snowflake, as a string). */
+            discord_id: string;
+            /** Format: int32 */
+            gm_level: number;
+            username: string;
+        };
+        DiscordRegistered: {
+            /** @description The new account's key (it acts as the account). */
+            key: components["schemas"]["CreatedApiKey"];
+            link: components["schemas"]["DiscordLink"];
+        };
+        DiscordRegistration: {
+            /** @description The Discord user id (a snowflake, as a string). */
+            discord_id: string;
+            /**
+             * Format: int32
+             * @description Default 0.
+             */
+            gm_level?: number;
+            password: string;
+            username: string;
         };
         Done: {
             /**
@@ -1007,6 +1209,10 @@ export interface components {
             /** @description Shown to the player in chat. */
             reason?: string | null;
         };
+        LinkChanges: {
+            /** Format: int32 */
+            gm_level: number;
+        };
         Login: {
             password: string;
             /**
@@ -1130,6 +1336,10 @@ export interface components {
             name: string;
             scope: components["schemas"]["ApiScope"];
         };
+        NewCode: {
+            discord_id: string;
+            purpose: components["schemas"]["CodePurpose"];
+        };
         Particle: {
             /**
              * Format: int32
@@ -1188,6 +1398,15 @@ export interface components {
              */
             playfield?: number | null;
         };
+        RedeemCode: {
+            /** @description As sent by the bot; any case, the dash optional. */
+            code: string;
+        };
+        /**
+         * @description Who may create game accounts (`--registration`).
+         * @enum {string}
+         */
+        Registration: "open" | "discord" | "closed";
         /** @description Achievements to take away: `ids`, or with `all` every one. */
         RemoveAchievementsRequest: {
             /**
@@ -1226,7 +1445,9 @@ export interface components {
             moderator_gm_level: number;
             /** @description Whether `/v1/status` and `/v1/online` need a read-scope credential (`--private-status`). */
             private_status: boolean;
-            /** @description Whether `POST /v1/auth/register` accepts new accounts (`--open-registration`). */
+            /** @description Who may create accounts (`--registration`). */
+            registration: components["schemas"]["Registration"];
+            /** @description Whether `POST /v1/auth/register` accepts new accounts (`registration` is `open`). */
             registration_open: boolean;
         };
         Session: {
@@ -1236,6 +1457,11 @@ export interface components {
              * @description Unix time.
              */
             expires_at: number;
+            /**
+             * @description A session from a one-time sign-in code (`/v1/auth/code`): `/v1/me/password` takes a new
+             *     password without the current one.
+             */
+            password_reset: boolean;
             scope?: components["schemas"]["ApiScope"] | null;
             /** @description Send as `Authorization: Bearer <token>`. */
             token: string;
@@ -1717,6 +1943,45 @@ export interface operations {
             };
         };
     };
+    code_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeLogin"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -2100,6 +2365,221 @@ export interface operations {
             };
         };
     };
+    register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscordRegistration"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordRegistered"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCode"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordCode"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    links: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordLink"][];
+                };
+            };
+        };
+    };
+    get_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discord_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordLink"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unlink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discord_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discord_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkChanges"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordLink"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    link_api_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discord_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedApiKey"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     instances: {
         parameters: {
             query?: never;
@@ -2168,6 +2648,53 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    link_own_account: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedeemCode"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

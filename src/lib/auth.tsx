@@ -77,6 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         apply(s)
         return s
       },
+      loginWithCode: async (code) => {
+        const s = await unwrap(api.POST("/v1/auth/code", { body: { code } }))
+        apply(s)
+        return s
+      },
       logout: async () => {
         try {
           await unwrap(api.POST("/v1/auth/logout"))

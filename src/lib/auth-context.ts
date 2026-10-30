@@ -2,7 +2,7 @@ import { createContext, useContext } from "react"
 
 import type { Account, ApiScope, Session } from "@/api/client"
 
-const SCOPES: ApiScope[] = ["read", "moderate", "admin"]
+const SCOPES: ApiScope[] = ["read", "moderate", "discord", "admin"]
 
 export type AuthState = {
   session: Session | null
@@ -10,6 +10,8 @@ export type AuthState = {
   /** Whether the session's scope includes `scope` (each scope includes the ones before it). */
   can: (scope: ApiScope) => boolean
   login: (username: string, password: string) => Promise<Session>
+  /** Sign in with a one-time code the Discord bot sent (`/reset-password`). */
+  loginWithCode: (code: string) => Promise<Session>
   logout: () => Promise<void>
   /** Forget the session locally (it already ended on the server). */
   clear: () => void

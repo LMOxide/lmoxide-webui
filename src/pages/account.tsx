@@ -322,6 +322,9 @@ export function AccountPage() {
                     <span className="font-mono">{a.id}</span>
                   </Field>
                   <Field label="GM level">{a.gm_level}</Field>
+                  <Field label="Discord">
+                    {a.discord_id ? <span className="font-mono">{a.discord_id}</span> : "Not linked"}
+                  </Field>
                   <Field label="Password">
                     {a.has_password ? "Set" : <span className="text-destructive">None: can't log in</span>}
                   </Field>

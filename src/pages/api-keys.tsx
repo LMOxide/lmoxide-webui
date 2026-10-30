@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckIcon, CopyIcon, PlusIcon, TriangleAlertIcon } from "lucide-react"
 import { useState } from "react"
+import { Link } from "react-router"
 import { toast } from "sonner"
 
 import { api, errorMessage, unwrap, type ApiScope, type Schemas } from "@/api/client"
@@ -29,6 +30,7 @@ import { formatRelative, formatTime } from "@/lib/format"
 const SCOPES: [ApiScope, string][] = [
   ["read", "read: status, players, accounts, characters"],
   ["moderate", "moderate: + kick, ban, unban, broadcast"],
+  ["discord", "discord: + register and link accounts (the Discord bot)"],
   ["admin", "admin: everything"],
 ]
 
@@ -154,15 +156,19 @@ function CreateKey() {
 }
 
 function ScopeBadge({ scope }: { scope: ApiScope }) {
-  return <Badge variant={scope === "admin" ? "default" : scope === "moderate" ? "secondary" : "outline"}>{scope}</Badge>
+  return <Badge variant={scope === "admin" ? "default" : scope === "read" ? "outline" : "secondary"}>{scope}</Badge>
 }
 
 export function ApiKeysPage() {
   const queryClient = useQueryClient()
   const keys = useQuery({ queryKey: ["api-keys"], queryFn: () => unwrap(api.GET("/v1/api-keys")) })
   const [showRevoked, setShowRevoked] = useState(false)
-  const list = (keys.data ?? []).filter((k) => showRevoked || !k.revoked)
-  const revokedCount = (keys.data ?? []).filter((k) => k.revoked).length
+  const [showAccountKeys, setShowAccountKeys] = useState(false)
+  // account keys: one per account linked to Discord, made by the bot
+  const shown = (keys.data ?? []).filter((k) => showAccountKeys || k.account_id == null)
+  const list = shown.filter((k) => showRevoked || !k.revoked)
+  const revokedCount = shown.filter((k) => k.revoked).length
+  const accountKeyCount = (keys.data ?? []).filter((k) => k.account_id != null && !k.revoked).length
 
   const revoke = async (k: Schemas["ApiKey"]) => {
     await unwrap(api.DELETE("/v1/api-keys/{id}", { params: { path: { id: k.id } } }))
@@ -198,6 +204,11 @@ export function ApiKeysPage() {
                     <TableRow key={k.id} className={k.revoked ? "text-muted-foreground" : undefined}>
                       <TableCell className="font-medium">
                         {k.name} {k.revoked && <Badge variant="outline">revoked</Badge>}
+                        {k.account_id != null && (
+                          <Link to={`/accounts/${k.account_id}`} className="ml-1">
+                            <Badge variant="outline">account {k.account_id}</Badge>
+                          </Link>
+                        )}
                       </TableCell>
                       <TableCell>
                         <ScopeBadge scope={k.scope} />
@@ -229,11 +240,18 @@ export function ApiKeysPage() {
           </CardContent>
         </Card>
       )}
-      {revokedCount > 0 && (
-        <Button variant="link" size="sm" className="mt-2 px-0" onClick={() => setShowRevoked((s) => !s)}>
-          {showRevoked ? "Hide" : "Show"} {revokedCount} revoked
-        </Button>
-      )}
+      <div className="mt-2 flex gap-4">
+        {revokedCount > 0 && (
+          <Button variant="link" size="sm" className="px-0" onClick={() => setShowRevoked((s) => !s)}>
+            {showRevoked ? "Hide" : "Show"} {revokedCount} revoked
+          </Button>
+        )}
+        {accountKeyCount > 0 && (
+          <Button variant="link" size="sm" className="px-0" onClick={() => setShowAccountKeys((s) => !s)}>
+            {showAccountKeys ? "Hide" : "Show"} {accountKeyCount} account keys (Discord bot)
+          </Button>
+        )}
+      </div>
     </>
   )
 }
