@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatRelative } from "@/lib/format"
@@ -121,9 +122,11 @@ function keptRecords(f: Filter, b: Branch): BranchRecord[] {
   return b.records.filter((r) => (!f.op || r.change === f.op) && hasWords(ws.filter((w) => !g.includes(w)), recordHay(r)))
 }
 
+/** The select items' value for no filter (they can't have an empty one). */
+const ANY = "any"
+
 function FilterBar({ filter, set, clear }: { filter: Filter; set: (f: Partial<Filter>) => void; clear: () => void }) {
   const active = filter.q || filter.status || filter.op
-  const sel = "h-8 rounded-lg border border-input bg-transparent px-2 text-sm dark:bg-input/30"
   return (
     <Card size="sm">
       <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -133,26 +136,36 @@ function FilterBar({ filter, set, clear }: { filter: Filter; set: (f: Partial<Fi
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="cf-status">Status</Label>
-          <select id="cf-status" className={sel} value={filter.status} onChange={(e) => set({ status: e.target.value as Filter["status"] })}>
-            <option value="">Any</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <Select value={filter.status || ANY} onValueChange={(v) => set({ status: v === ANY ? "" : (v as Status) })}>
+            <SelectTrigger id="cf-status" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY}>Any</SelectItem>
+              {STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="cf-op">Change</Label>
           <div className="flex gap-2">
-            <select id="cf-op" className={`${sel} flex-1`} value={filter.op} onChange={(e) => set({ op: e.target.value as Filter["op"] })}>
-              <option value="">Any</option>
-              {OPS.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
+            <Select value={filter.op || ANY} onValueChange={(v) => set({ op: v === ANY ? "" : (v as Op) })}>
+              <SelectTrigger id="cf-op" className="flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY}>Any</SelectItem>
+                {OPS.map((o) => (
+                  <SelectItem key={o} value={o}>
+                    {o}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="outline" disabled={!active} onClick={clear} title="Show everything">
               <FilterXIcon data-icon="inline-start" />
               Clear
