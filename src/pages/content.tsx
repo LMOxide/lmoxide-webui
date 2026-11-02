@@ -15,14 +15,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatRelative } from "@/lib/format"
 
-// lmoxide docs/WORLD-CONTENT.md: world editors commit their changes, with a message, to their own
-// branch (contrib/<name>) of the world editor's content; admins merge each commit into the
-// content (its main) or reject it with a reason.
+// lmoxide docs/WORLD-CONTENT.md: world editors commit their changes, with messages, to branches
+// of theirs (contrib/<editor>/<name>) of the world editor's content; admins review a branch as a
+// whole and merge it into the content (its main, one commit) or reject it with a reason (its
+// editor's next commit to it reopens it).
 
 interface ContentState {
   /** the content tree this server runs */
   content: string | null
-  /** contributor commits waiting (none: this server has no world editor content) */
+  /** contributor branches waiting (none: this server has no world editor content) */
   pending: number | null
   /** merged commits the content repository doesn't have yet */
   unpushed: number | null
@@ -30,39 +31,54 @@ interface ContentState {
 
 type Op = "added" | "changed" | "removed"
 
-interface CommitRecord {
+interface BranchRecord {
   id: string
   feature: string
   change: Op
   /** relative to the content tree */
   file: string
   author: string
+  /** as the content has it now (closed branches: as the branch started) */
   before: unknown
   after: unknown
+  /** the content changed it since the branch started: merging puts the branch's version over it */
+  conflict: boolean
+  /** as the branch started (with a conflict) */
+  base?: unknown
 }
 
-type Status = "pending" | "merged" | "rejected"
+type Status = "open" | "pending" | "rejected" | "merged" | "reset" | "deleted"
 
-interface Contribution {
+interface BranchCommit {
   hash: string
-  branch: string
-  /** whose changes */
   author: string
-  /** who committed them */
   by: string
   created: number
   subject: string
-  /** the whole commit message */
   message: string
+}
+
+interface Branch {
+  /** contrib/<editor>/<name> */
+  branch: string
+  /** the name as its editor typed it */
+  title: string
+  author: string
   status: Status
-  decision?: { status: string; by: string; at: number; reason?: string; merged_as?: string }
-  records: CommitRecord[]
+  tip: string
+  base: string
+  updated: number
+  decision?: { status: string; by: string; at: number; reason?: string; tip: string }
+  closed?: { branch: string; title: string; status: string; by: string; at: number; merged_as?: string; decision?: { by: string; at: number; reason?: string } }
+  commits: BranchCommit[]
+  records: BranchRecord[]
+  conflicts: number
 }
 
 const OP_VARIANT = { added: "default", changed: "secondary", removed: "destructive" } as const
-const STATUS_VARIANT = { pending: "outline", rejected: "destructive", merged: "default" } as const
+const STATUS_VARIANT = { open: "secondary", pending: "outline", rejected: "destructive", merged: "default", reset: "secondary", deleted: "secondary" } as const
 const OPS: Op[] = ["added", "changed", "removed"]
-const STATUSES: Status[] = ["pending", "merged", "rejected"]
+const STATUSES: Status[] = ["pending", "rejected", "open", "merged", "reset", "deleted"]
 
 // ------------------------------------------------------------------ filters
 
@@ -94,14 +110,15 @@ const lower = (s: string | null | undefined) => (s ?? "").toLowerCase()
 const words = (q: string) => lower(q).split(/\s+/).filter(Boolean)
 const hasWords = (ws: string[], hay: string) => ws.every((w) => hay.includes(w))
 
-const commitHay = (c: Contribution) => lower(`${c.hash} ${c.branch} ${c.author} ${c.by} ${c.message} ${c.status} ${c.decision?.reason ?? ""} ${c.decision?.by ?? ""}`)
-const recordHay = (r: CommitRecord) => lower(`${r.id} ${r.feature} ${r.change} ${r.file} ${r.author}`)
+const branchHay = (b: Branch) =>
+  lower(`${b.branch} ${b.title} ${b.author} ${b.status} ${b.decision?.reason ?? ""} ${b.decision?.by ?? ""} ${b.closed?.by ?? ""} ${b.commits.map((c) => `${c.hash} ${c.by} ${c.message}`).join(" ")}`)
+const recordHay = (r: BranchRecord) => lower(`${r.id} ${r.feature} ${r.change} ${r.file} ${r.author}`)
 
-/** The records of a commit the filter keeps (none: the commit is left out). */
-function keptRecords(f: Filter, c: Contribution): CommitRecord[] {
+/** The records of a branch the filter keeps (none: the branch is left out). */
+function keptRecords(f: Filter, b: Branch): BranchRecord[] {
   const ws = words(f.q)
-  const g = commitHay(c)
-  return c.records.filter((r) => (!f.op || r.change === f.op) && hasWords(ws.filter((w) => !g.includes(w)), recordHay(r)))
+  const g = branchHay(b)
+  return b.records.filter((r) => (!f.op || r.change === f.op) && hasWords(ws.filter((w) => !g.includes(w)), recordHay(r)))
 }
 
 function FilterBar({ filter, set, clear }: { filter: Filter; set: (f: Partial<Filter>) => void; clear: () => void }) {
@@ -112,7 +129,7 @@ function FilterBar({ filter, set, clear }: { filter: Filter; set: (f: Partial<Fi
       <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="grid gap-1.5 sm:col-span-2">
           <Label htmlFor="cf-q">Search</Label>
-          <Input id="cf-q" value={filter.q} onChange={(e) => set({ q: e.target.value })} placeholder="Messages, record ids, files, features, authors…" />
+          <Input id="cf-q" value={filter.q} onChange={(e) => set({ q: e.target.value })} placeholder="Branches, messages, record ids, files, authors…" />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="cf-status">Status</Label>
@@ -164,7 +181,7 @@ function flatten(v: unknown, prefix = "", out = new Map<string, unknown>()): Map
 const show = (v: unknown) => (v === undefined ? "" : typeof v === "number" ? String(Math.round(v * 1000) / 1000) : JSON.stringify(v))
 
 /** The fields that differ between `before` and `after` (all of them for an added or removed record). */
-function differences(r: CommitRecord): { path: string; before: unknown; after: unknown }[] {
+function differences(r: BranchRecord): { path: string; before: unknown; after: unknown }[] {
   const a = flatten(r.before)
   const b = flatten(r.after)
   const paths = [...new Set([...a.keys(), ...b.keys()])].sort()
@@ -172,12 +189,12 @@ function differences(r: CommitRecord): { path: string; before: unknown; after: u
 }
 
 /** A record's name, when it has one (spawns and NPCs do). */
-function recordName(r: CommitRecord): string | null {
+function recordName(r: BranchRecord): string | null {
   const v = (r.after ?? r.before) as Record<string, unknown> | null
   return v && typeof v === "object" && typeof v.name === "string" ? v.name : null
 }
 
-function Diff({ r }: { r: CommitRecord }) {
+function Diff({ r }: { r: BranchRecord }) {
   const rows = differences(r)
   if (!rows.length) return <p className="text-sm text-muted-foreground">No field differs.</p>
   return (
@@ -202,30 +219,33 @@ function Diff({ r }: { r: CommitRecord }) {
   )
 }
 
-// ------------------------------------------------------------------ the commits
+// ------------------------------------------------------------------ the branches
 
-/** The body of a commit message (after its first line), if any. */
-const body = (c: Contribution) => c.message.split("\n").slice(1).join("\n").trim()
+/** A branch's path under /v1/content/branches. */
+const pathOf = (b: Branch) => `/v1/content/branches/${b.branch.replace(/^contrib\//, "")}`
 
-function CommitCard({ c, records, narrowed }: { c: Contribution; records: CommitRecord[]; narrowed: boolean }) {
+function BranchCard({ b, records, narrowed }: { b: Branch; records: BranchRecord[]; narrowed: boolean }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState("")
-  const short = c.hash.slice(0, 8)
+  const [merging, setMerging] = useState(false)
+  const [message, setMessage] = useState("")
   const done = () => queryClient.invalidateQueries({ queryKey: ["content"] })
   const merge = useMutation({
-    mutationFn: () => raw<{ merged: string }>("POST", `/v1/content/commits/${c.hash}/merge`),
+    mutationFn: () => raw<{ merged: string }>("POST", `${pathOf(b)}/merge`, { message: message.trim() || null, force: b.conflicts > 0 }),
     onSuccess: (r) => {
-      toast.success(`Merged ${short} as ${r.merged.slice(0, 8)}`)
+      toast.success(`Merged ${b.title} as ${r.merged.slice(0, 8)}`)
+      setMerging(false)
+      setMessage("")
       done()
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
   const reject = useMutation({
-    mutationFn: () => raw<Contribution>("POST", `/v1/content/commits/${c.hash}/reject`, { reason: reason.trim() || null }),
+    mutationFn: () => raw<Branch>("POST", `${pathOf(b)}/reject`, { reason: reason.trim() || null }),
     onSuccess: () => {
-      toast.success(`Rejected ${short}`)
+      toast.success(`Rejected ${b.title}`)
       setRejecting(false)
       setReason("")
       done()
@@ -239,129 +259,185 @@ function CommitCard({ c, records, narrowed }: { c: Contribution; records: Commit
       else n.add(id)
       return n
     })
-  const text = body(c)
+  const reason0 = b.decision?.reason ?? b.closed?.decision?.reason
+  const reviewable = b.status === "pending" || b.status === "rejected"
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm text-muted-foreground">{short}</span>
-          {c.subject}
-          <Badge variant={STATUS_VARIANT[c.status] ?? "outline"}>{c.status}</Badge>
+          {b.title}
+          <Badge variant={STATUS_VARIANT[b.status] ?? "outline"}>{b.status}</Badge>
+          {b.conflicts > 0 && !b.closed && <Badge variant="destructive">{b.conflicts} changed in the content since</Badge>}
         </CardTitle>
         <CardDescription>
-          {c.author || "unknown"}'s changes
-          {c.by !== c.author && `, committed by ${c.by}`} {formatRelative(c.created)} · {c.records.length} record{c.records.length === 1 ? "" : "s"} · {c.branch}
-          {narrowed && records.length < c.records.length && ` · ${records.length} of ${c.records.length} records match the filter`}
-          {c.decision && ` · ${c.decision.status} by ${c.decision.by} ${formatRelative(c.decision.at)}`}
-          {c.decision?.reason && `: ${c.decision.reason}`}
-          {c.decision?.merged_as && ` (as ${c.decision.merged_as.slice(0, 8)})`}
+          {b.author || "unknown"}'s branch <span className="font-mono">{b.branch}</span>
+          {b.updated > 0 && ` · last commit ${formatRelative(b.updated)}`} · {b.commits.length} commit{b.commits.length === 1 ? "" : "s"} · {b.records.length} record
+          {b.records.length === 1 ? "" : "s"}
+          {narrowed && records.length < b.records.length && ` · ${records.length} match the filter`}
+          {b.decision && ` · rejected by ${b.decision.by} ${formatRelative(b.decision.at)}`}
+          {b.closed && ` · ${b.closed.status} by ${b.closed.by} ${formatRelative(b.closed.at)}`}
+          {b.closed?.merged_as && ` (as ${b.closed.merged_as.slice(0, 8)})`}
+          {reason0 && ` · reason: ${reason0}`}
         </CardDescription>
-        {text && <pre className="text-sm whitespace-pre-wrap">{text}</pre>}
-        {c.status === "pending" && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled={merge.isPending} onClick={() => merge.mutate()} title="Apply this commit's change to the content (as its author, with you as the approver)">
-              <GitMergeIcon data-icon="inline-start" />
-              Merge
-            </Button>
-            {rejecting ? (
-              <form
-                className="flex flex-wrap items-center gap-2"
-                onSubmit={(ev) => {
-                  ev.preventDefault()
-                  reject.mutate()
-                }}
-              >
-                <Input autoFocus className="h-8 w-72" value={reason} onChange={(ev) => setReason(ev.target.value)} placeholder="Reason (the author sees it)" />
-                <Button size="sm" variant="destructive" type="submit" disabled={reject.isPending}>
-                  Reject {short}
+        {b.commits.length > 0 && (
+          <ul className="grid gap-1 text-sm">
+            {b.commits.map((c) => {
+              const body = c.message.split("\n").slice(1).join("\n").trim()
+              return (
+                <li key={c.hash}>
+                  <span className="font-mono text-xs text-muted-foreground">{c.hash.slice(0, 8)}</span> <span className="font-medium">{c.subject}</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {formatRelative(c.created)}
+                    {c.by !== c.author && ` · committed by ${c.by}`}
+                  </span>
+                  {body && <pre className="ml-6 text-xs whitespace-pre-wrap text-muted-foreground">{body}</pre>}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {reviewable && (
+          <div className="grid gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {merging ? (
+                <form
+                  className="flex flex-wrap items-center gap-2"
+                  onSubmit={(ev) => {
+                    ev.preventDefault()
+                    merge.mutate()
+                  }}
+                >
+                  <Input autoFocus className="h-8 w-96" value={message} onChange={(ev) => setMessage(ev.target.value)} placeholder="Merge message (default: the branch's commit messages)" />
+                  <Button size="sm" type="submit" disabled={merge.isPending}>
+                    <GitMergeIcon data-icon="inline-start" />
+                    {b.conflicts > 0 ? `Merge, over ${b.conflicts} record${b.conflicts === 1 ? "" : "s"}` : "Merge"}
+                  </Button>
+                  <Button size="sm" variant="ghost" type="button" onClick={() => setMerging(false)}>
+                    Cancel
+                  </Button>
+                </form>
+              ) : (
+                <Button size="sm" onClick={() => setMerging(true)} title="Put this branch's records into the content as one commit (by its editor, you as the approver)">
+                  <GitMergeIcon data-icon="inline-start" />
+                  Merge…
                 </Button>
-                <Button size="sm" variant="ghost" type="button" onClick={() => setRejecting(false)}>
-                  Cancel
-                </Button>
-              </form>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => setRejecting(true)}>
-                <XIcon data-icon="inline-start" />
-                Reject
-              </Button>
+              )}
+              {rejecting ? (
+                <form
+                  className="flex flex-wrap items-center gap-2"
+                  onSubmit={(ev) => {
+                    ev.preventDefault()
+                    reject.mutate()
+                  }}
+                >
+                  <Input autoFocus className="h-8 w-72" value={reason} onChange={(ev) => setReason(ev.target.value)} placeholder="Reason (the editor sees it)" />
+                  <Button size="sm" variant="destructive" type="submit" disabled={reject.isPending}>
+                    Reject
+                  </Button>
+                  <Button size="sm" variant="ghost" type="button" onClick={() => setRejecting(false)}>
+                    Cancel
+                  </Button>
+                </form>
+              ) : (
+                b.status === "pending" && (
+                  <Button size="sm" variant="outline" onClick={() => setRejecting(true)}>
+                    <XIcon data-icon="inline-start" />
+                    Reject
+                  </Button>
+                )
+              )}
+            </div>
+            {merging && b.conflicts > 0 && (
+              <p className="text-sm text-destructive">
+                The content changed {b.conflicts} of these records since the branch started (marked below): merging puts the branch's versions over those changes.
+              </p>
             )}
           </div>
         )}
       </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-6" />
-              <TableHead>Record</TableHead>
-              <TableHead>Change</TableHead>
-              <TableHead>Feature</TableHead>
-              <TableHead>File</TableHead>
-              <TableHead>Author</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {records.map((r) => {
-              const k = `${r.id} ${r.feature}`
-              const isOpen = open.has(k)
-              const name = recordName(r)
-              return (
-                <Fragment key={k}>
-                  <TableRow className="cursor-pointer" onClick={() => flip(k)}>
-                    <TableCell>{isOpen ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}</TableCell>
-                    <TableCell>
-                      {name && <span className="mr-2 font-medium">{name}</span>}
-                      <span className="font-mono text-xs text-muted-foreground">{r.id}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={OP_VARIANT[r.change] ?? "outline"}>{r.change}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">{r.feature}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{r.file}</TableCell>
-                    <TableCell className="text-sm">{r.author}</TableCell>
-                  </TableRow>
-                  {isOpen && (
-                    <TableRow>
-                      <TableCell />
-                      <TableCell colSpan={5}>
-                        <Diff r={r} />
+      {records.length > 0 && (
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-6" />
+                <TableHead>Record</TableHead>
+                <TableHead>Change</TableHead>
+                <TableHead>Feature</TableHead>
+                <TableHead>File</TableHead>
+                <TableHead>Author</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {records.map((r) => {
+                const k = `${r.id} ${r.feature}`
+                const isOpen = open.has(k)
+                const name = recordName(r)
+                return (
+                  <Fragment key={k}>
+                    <TableRow className="cursor-pointer" onClick={() => flip(k)}>
+                      <TableCell>{isOpen ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}</TableCell>
+                      <TableCell>
+                        {name && <span className="mr-2 font-medium">{name}</span>}
+                        <span className="font-mono text-xs text-muted-foreground">{r.id}</span>
                       </TableCell>
+                      <TableCell>
+                        <Badge variant={OP_VARIANT[r.change] ?? "outline"}>{r.change}</Badge>
+                        {r.conflict && (
+                          <Badge variant="destructive" className="ml-1" title="The content changed this record since the branch started">
+                            changed since
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm">{r.feature}</TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{r.file}</TableCell>
+                      <TableCell className="text-sm">{r.author}</TableCell>
                     </TableRow>
-                  )}
-                </Fragment>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </CardContent>
+                    {isOpen && (
+                      <TableRow>
+                        <TableCell />
+                        <TableCell colSpan={5}>
+                          {r.conflict && <p className="mb-2 text-xs text-muted-foreground">Before: as the content has it now (the branch started from an older version).</p>}
+                          <Diff r={r} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      )}
     </Card>
   )
 }
 
-function Commits({ filter }: { filter: Filter }) {
-  const q = useQuery({ queryKey: ["content", "commits"], queryFn: () => raw<Contribution[]>("GET", "/v1/content/commits"), refetchInterval: 15_000 })
+function Branches({ filter }: { filter: Filter }) {
+  const q = useQuery({ queryKey: ["content", "branches"], queryFn: () => raw<Branch[]>("GET", "/v1/content/branches"), refetchInterval: 15_000 })
   const narrowed = !!(filter.q.trim() || filter.op)
   const shown = useMemo(
     () =>
       (q.data ?? [])
-        .filter((c) => !filter.status || c.status === filter.status)
-        .map((c) => ({ c, records: keptRecords(filter, c) }))
-        .filter(({ c, records }) => records.length > 0 || (!narrowed && c.records.length === 0)),
+        .filter((b) => (filter.status ? b.status === filter.status : b.status !== "open"))
+        .map((b) => ({ b, records: keptRecords(filter, b) }))
+        .filter(({ b, records }) => records.length > 0 || (!narrowed && b.records.length === 0)),
     [q.data, filter, narrowed],
   )
   if (q.error) return <ErrorAlert error={q.error} />
   if (!q.data) return <Skeleton className="h-32 w-full" />
-  if (!q.data.length) return <Empty>No commits yet: the world editors' work shows up here when they commit it.</Empty>
-  if (!shown.length) return <Empty>Nothing matches the filter ({q.data.length} commit{q.data.length === 1 ? "" : "s"} hidden).</Empty>
+  if (!q.data.length) return <Empty>No branches yet: the world editors' work shows up here when they commit it.</Empty>
+  if (!shown.length) return <Empty>Nothing matches the filter ({q.data.length} branch{q.data.length === 1 ? "" : "es"} hidden).</Empty>
   return (
     <div className="grid gap-4">
       {shown.length < q.data.length && (
         <p className="text-sm text-muted-foreground">
-          Showing {shown.length} of {q.data.length} commits.
+          Showing {shown.length} of {q.data.length} branches{!filter.status && " (open ones with nothing to merge left out)"}.
         </p>
       )}
-      {shown.map(({ c, records }) => (
-        <CommitCard key={c.hash} c={c} records={records} narrowed={narrowed} />
+      {shown.map(({ b, records }) => (
+        <BranchCard key={`${b.branch} ${b.closed ? b.tip : ""}`} b={b} records={records} narrowed={narrowed} />
       ))}
     </div>
   )
@@ -377,20 +453,21 @@ export function ContentPage() {
         title="World content"
         description={
           s
-            ? `${s.pending ?? 0} commit${s.pending === 1 ? "" : "s"} waiting${s.unpushed ? ` · ${s.unpushed} merged, not in the content repository yet` : ""} · this server runs ${s.content ?? "no content tree"}`
+            ? `${s.pending ?? 0} branch${s.pending === 1 ? "" : "es"} waiting${s.unpushed ? ` · ${s.unpushed} merged, not in the content repository yet` : ""} · this server runs ${s.content ?? "no content tree"}`
             : "What the world editors committed, to merge or reject."
         }
       />
       {state.error && <ErrorAlert error={state.error} />}
-      {s && s.pending === null && <ErrorAlert title="No world editor content" error="This server doesn't run the world editor's content (--editor-content-dir), so there are no commits to review here." />}
+      {s && s.pending === null && <ErrorAlert title="No world editor content" error="This server doesn't run the world editor's content (--editor-content-dir), so there are no branches to review here." />}
       <FilterBar filter={filter} set={setFilter} clear={clearFilter} />
       <section className="grid gap-3">
-        <h2 className="font-heading text-lg font-semibold">Commits</h2>
+        <h2 className="font-heading text-lg font-semibold">Branches</h2>
         <p className="text-sm text-muted-foreground">
-          Oldest first. Click a record for the fields it changes. Merging applies that commit's change to the world editor's content as its author (you as the approver); play servers get it
-          once it is pushed to the content repository. A rejected commit stays on its author's branch with your reason.
+          Waiting ones first, oldest first; then merged, reset and deleted ones. Click a record for the fields the branch changes against the content now. Merging puts the whole branch
+          into the world editor's content as one commit by its editor (you as the approver); play servers get it once it is pushed to the content repository. A rejected branch waits
+          for its editor's fixes, with your reason.
         </p>
-        <Commits filter={filter} />
+        <Branches filter={filter} />
       </section>
     </div>
   )
