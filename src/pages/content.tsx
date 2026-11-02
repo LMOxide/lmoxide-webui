@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ChevronDownIcon, ChevronRightIcon, FilterXIcon, GitMergeIcon, XIcon } from "lucide-react"
+import { ChevronDownIcon, ChevronRightIcon, FilterXIcon, GitMergeIcon, UploadIcon, XIcon } from "lucide-react"
 import { Fragment, useMemo, useState } from "react"
 import { useSearchParams } from "react-router"
 import { toast } from "sonner"
@@ -26,8 +26,17 @@ interface ContentState {
   content: string | null
   /** contributor branches waiting (none: this server has no world editor content) */
   pending: number | null
-  /** merged commits the content repository doesn't have yet */
+  /** merged commits the push target doesn't have yet (null: unknown) */
   unpushed: number | null
+  /** where Push sends them: the played content's folder, or a remote and branch */
+  push_target: string | null
+}
+
+interface Pushed {
+  target: string
+  commits: number
+  from: string | null
+  to: string
 }
 
 type Op = "added" | "changed" | "removed"
@@ -456,6 +465,31 @@ function Branches({ filter }: { filter: Filter }) {
   )
 }
 
+/** Sends the merged branches to the push target (default: the content the play servers run). */
+function PushButton({ s }: { s: ContentState }) {
+  const queryClient = useQueryClient()
+  const push = useMutation({
+    mutationFn: () => raw<Pushed>("POST", "/v1/content/push"),
+    onSuccess: (p) => {
+      toast.success(p.commits ? `Pushed ${p.commits} commit${p.commits === 1 ? "" : "s"} to ${p.target}` : `${p.target} already has everything merged`)
+      queryClient.invalidateQueries({ queryKey: ["content"] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  if (s.pending === null) return null
+  const n = s.unpushed
+  return (
+    <Button
+      disabled={push.isPending || n === 0}
+      onClick={() => push.mutate()}
+      title={`Send the merged branches to ${s.push_target ?? "the push target"}; play servers run them from their next start`}
+    >
+      <UploadIcon data-icon="inline-start" />
+      {n === 0 ? "Pushed" : n === null ? "Push" : `Push ${n} merged commit${n === 1 ? "" : "s"}`}
+    </Button>
+  )
+}
+
 export function ContentPage() {
   const state = useQuery({ queryKey: ["content", "state"], queryFn: () => raw<ContentState>("GET", "/v1/content/state"), refetchInterval: 15_000 })
   const [filter, setFilter, clearFilter] = useFilter()
@@ -466,9 +500,10 @@ export function ContentPage() {
         title="World content"
         description={
           s
-            ? `${s.pending ?? 0} branch${s.pending === 1 ? "" : "es"} waiting${s.unpushed ? ` · ${s.unpushed} merged, not in the content repository yet` : ""} · this server runs ${s.content ?? "no content tree"}`
+            ? `${s.pending ?? 0} branch${s.pending === 1 ? "" : "es"} waiting${s.unpushed ? ` · ${s.unpushed} merged, not pushed to ${s.push_target ?? "the push target"} yet` : ""} · this server runs ${s.content ?? "no content tree"}`
             : "What the world editors committed, to merge or reject."
         }
+        actions={s && <PushButton s={s} />}
       />
       {state.error && <ErrorAlert error={state.error} />}
       {s && s.pending === null && <ErrorAlert title="No world editor content" error="This server doesn't run the world editor's content (--editor-content-dir), so there are no branches to review here." />}
@@ -477,7 +512,7 @@ export function ContentPage() {
         <h2 className="font-heading text-lg font-semibold">Branches</h2>
         <p className="text-sm text-muted-foreground">
           Waiting ones first, oldest first; then merged, reset and deleted ones. Click a record for the fields the branch changes against the content now. Merging puts the whole branch
-          into the world editor's content as one commit by its editor (you as the approver); play servers get it once it is pushed to the content repository. A rejected branch waits
+          into the world editor's content as one commit by its editor (you as the approver); Push sends what was merged to the content the play servers run, from their next start. A rejected branch waits
           for its editor's fixes, with your reason.
         </p>
         <Branches filter={filter} />
