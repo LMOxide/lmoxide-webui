@@ -207,8 +207,13 @@ function differences(r: BranchRecord): { path: string; before: unknown; after: u
   const a = flatten(r.before)
   const b = flatten(r.after)
   const paths = [...new Set([...a.keys(), ...b.keys()])].sort()
-  return paths.filter((p) => JSON.stringify(a.get(p)) !== JSON.stringify(b.get(p))).map((path) => ({ path, before: a.get(path), after: b.get(path) }))
+  return paths
+    .filter((p) => !BOOKKEEPING.includes(p) && JSON.stringify(a.get(p)) !== JSON.stringify(b.get(p)))
+    .map((path) => ({ path, before: a.get(path), after: b.get(path) }))
 }
+
+/** Fields every save changes (who saved last, when, the revision): left out of the diffs. */
+const BOOKKEEPING = ["rev", "author", "updated"]
 
 /** A record's name, when it has one (spawns and NPCs do). */
 function recordName(r: BranchRecord): string | null {
@@ -218,12 +223,12 @@ function recordName(r: BranchRecord): string | null {
 
 function Diff({ r }: { r: BranchRecord }) {
   const rows = differences(r)
-  if (!rows.length) return <p className="text-sm text-muted-foreground">No field differs.</p>
+  if (!rows.length) return <p className="text-sm text-muted-foreground">No field differs but who saved it and when.</p>
   return (
-    <Table>
+    <Table className="table-fixed">
       <TableHeader>
         <TableRow>
-          <TableHead>Field</TableHead>
+          <TableHead className="w-40">Field</TableHead>
           <TableHead>Before</TableHead>
           <TableHead>After</TableHead>
         </TableRow>
@@ -231,7 +236,7 @@ function Diff({ r }: { r: BranchRecord }) {
       <TableBody>
         {rows.map((d) => (
           <TableRow key={d.path}>
-            <TableCell className="font-mono text-xs">{d.path}</TableCell>
+            <TableCell className="font-mono text-xs break-all whitespace-normal">{d.path}</TableCell>
             <TableCell className="font-mono text-xs break-all whitespace-normal text-muted-foreground">{show(d.before)}</TableCell>
             <TableCell className="font-mono text-xs break-all whitespace-normal">{show(d.after)}</TableCell>
           </TableRow>
@@ -485,7 +490,7 @@ function PushButton({ s }: { s: ContentState }) {
       title={`Send the merged branches to ${s.push_target ?? "the push target"}; play servers run them from their next start`}
     >
       <UploadIcon data-icon="inline-start" />
-      {n === 0 ? "Pushed" : n === null ? "Push" : `Push ${n} merged commit${n === 1 ? "" : "s"}`}
+      {n === 0 ? "Nothing to push" : n === null ? "Push" : `Push ${n} merged commit${n === 1 ? "" : "s"}`}
     </Button>
   )
 }
